@@ -17,8 +17,9 @@ export class PlayerController {
     private manuallyPaused = false;
     private readonly events: PlayerControllerEvents;
 
-    constructor(events: PlayerControllerEvents) {
+    constructor(events: PlayerControllerEvents, repeatCount: number = -1) {
         this.events = events;
+        this.repeatCount = repeatCount;
     }
 
     get isInitialized(): boolean {

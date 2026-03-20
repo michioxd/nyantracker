@@ -66,6 +66,7 @@ export class nyantracker {
     private lastProgressCurrentLabel = "";
     private lastProgressTotalLabel = "";
     private patternCache = new Map<number, PatternCell[][]>();
+    private readonly orderStartSeconds = new Map<number, number>();
     private readonly patternRowCounts = new Map<number, number>();
     private readonly channelFreqs = new Float32Array(this.maxChannels);
     private readonly channelInstruments = new Uint8Array(this.maxChannels);
@@ -79,15 +80,18 @@ export class nyantracker {
         this.root = root;
         this.elements = elements;
         this.patternView = new PatternView(elements.patternHeader, elements.patternBody, elements.oscView);
-        this.player = new PlayerController({
-            onReady: () => {
-                this.elements.fileInput.disabled = false;
+        this.player = new PlayerController(
+            {
+                onReady: () => {
+                    this.elements.fileInput.disabled = false;
+                },
+                onMetadata: (metadata) => this.handleMetadata(metadata),
+                onProgress: (progress) => this.handleProgress(progress),
+                onError: (message) => this.updateStatus(message),
+                onEnded: () => this.updateStatus("ENDED"),
             },
-            onMetadata: (metadata) => this.handleMetadata(metadata),
-            onProgress: (progress) => this.handleProgress(progress),
-            onError: (message) => this.updateStatus(message),
-            onEnded: () => this.updateStatus("ENDED"),
-        });
+            0,
+        );
     }
 
     async init(): Promise<void> {
@@ -282,6 +286,7 @@ export class nyantracker {
         }
 
         this.patternCache.clear();
+        this.orderStartSeconds.clear();
         this.patternRowCounts.clear();
         this.currentRow = -1;
         this.channelFreqs.fill(0);
@@ -470,15 +475,9 @@ export class nyantracker {
         const totalOrders = this.getTotalOrders();
         const targetOrder = Math.max(0, Math.min(totalOrders - 1, currentOrder + direction));
 
-        this.legacyModule.ccall(
-            "openmpt_module_set_position_order_row",
-            "number",
-            ["number", "number", "number"],
-            [this.uiModulePtr, targetOrder, 0],
-        );
-
-        const targetSeconds = this.legacyModule._openmpt_module_get_position_seconds(this.uiModulePtr);
+        const targetSeconds = this.syncLegacyModuleToSeconds(this.getOrderStartSeconds(targetOrder));
         this.player.seek(targetSeconds);
+        this.lastFrameTime = performance.now();
         this.updateProgressUi(targetSeconds, this.durationSeconds || this.player.instance?.duration || 0);
     }
 
@@ -494,8 +493,94 @@ export class nyantracker {
 
         const ratio = Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width));
         const seconds = ratio * this.durationSeconds;
-        this.player.seek(seconds);
-        this.updateProgressUi(seconds, this.durationSeconds);
+        const targetSeconds = this.syncLegacyModuleToSeconds(seconds);
+        this.player.seek(targetSeconds);
+        this.lastFrameTime = performance.now();
+        this.updateProgressUi(targetSeconds, this.durationSeconds);
+    }
+
+    private syncLegacyModuleToSeconds(seconds: number): number {
+        if (!this.legacyModule || !this.uiModulePtr) {
+            return seconds;
+        }
+
+        const safeSeconds = Math.max(0, seconds);
+        const targetOrder = this.getOrderForSeconds(safeSeconds);
+
+        this.legacyModule.ccall(
+            "openmpt_module_set_position_order_row",
+            "number",
+            ["number", "number", "number"],
+            [this.uiModulePtr, targetOrder, 0],
+        );
+        this.legacyModule.ccall(
+            "openmpt_module_set_position_seconds",
+            "number",
+            ["number", "number"],
+            [this.uiModulePtr, safeSeconds],
+        );
+
+        this.currentRow = -1;
+        return this.legacyModule._openmpt_module_get_position_seconds(this.uiModulePtr);
+    }
+
+    private getOrderForSeconds(seconds: number): number {
+        const totalOrders = this.getTotalOrders();
+        if (totalOrders <= 0) {
+            return 0;
+        }
+
+        this.ensureOrderStartSeconds();
+
+        let targetOrder = 0;
+        for (let orderIndex = 0; orderIndex < totalOrders; orderIndex += 1) {
+            const orderSeconds = this.orderStartSeconds.get(orderIndex) ?? 0;
+            if (orderSeconds > seconds) {
+                break;
+            }
+            targetOrder = orderIndex;
+        }
+
+        return targetOrder;
+    }
+
+    private getOrderStartSeconds(orderIndex: number): number {
+        this.ensureOrderStartSeconds();
+        return this.orderStartSeconds.get(orderIndex) ?? 0;
+    }
+
+    private ensureOrderStartSeconds(): void {
+        if (!this.legacyModule || !this.uiModulePtr) {
+            return;
+        }
+
+        const totalOrders = this.getTotalOrders();
+        if (totalOrders <= 0 || this.orderStartSeconds.size === totalOrders) {
+            return;
+        }
+
+        const currentSeconds = this.legacyModule._openmpt_module_get_position_seconds(this.uiModulePtr);
+        this.orderStartSeconds.clear();
+
+        for (let orderIndex = 0; orderIndex < totalOrders; orderIndex += 1) {
+            this.legacyModule.ccall(
+                "openmpt_module_set_position_order_row",
+                "number",
+                ["number", "number", "number"],
+                [this.uiModulePtr, orderIndex, 0],
+            );
+            this.orderStartSeconds.set(
+                orderIndex,
+                this.legacyModule._openmpt_module_get_position_seconds(this.uiModulePtr),
+            );
+        }
+
+        this.legacyModule.ccall(
+            "openmpt_module_set_position_seconds",
+            "number",
+            ["number", "number"],
+            [this.uiModulePtr, currentSeconds],
+        );
     }
 
     private updateProgressUi(currentSeconds: number, totalSeconds: number): void {
