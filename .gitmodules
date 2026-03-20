@@ -1,0 +1,3 @@
+[submodule "src/lib/chiptune2"]
+	path = src/lib/chiptune2
+	url = https://github.com/deskjet/chiptune2.js
