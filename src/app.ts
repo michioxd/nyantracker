@@ -421,10 +421,20 @@ export class nyantracker {
             if (cell.note && cell.note !== "---" && cell.note !== "===" && cell.note !== "^^^") {
                 this.channelFreqs[channelIndex] = getNoteFrequency(cell.note);
                 if (cell.inst !== "--") {
-                    this.channelInstruments[channelIndex] = Number.parseInt(cell.inst, 10) || 0;
+                    this.channelInstruments[channelIndex] = this.parseInstrumentIndex(cell.inst);
                 }
             }
         }
+    }
+
+    private parseInstrumentIndex(instrument: string): number {
+        if (!instrument || instrument === "--") {
+            return 0;
+        }
+
+        const radix = /[a-f]/i.test(instrument) ? 16 : 10;
+        const parsed = Number.parseInt(instrument, radix);
+        return Number.isFinite(parsed) ? parsed : 0;
     }
 
     private drawOscilloscopes(): void {
