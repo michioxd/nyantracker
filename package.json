@@ -16,6 +16,10 @@
     "vite": "^8.0.1"
   },
   "dependencies": {
+    "@icon/themify-icons": "^1.0.1-alpha.3",
     "chiptune3": "^0.8.4"
-  }
+  },
+  "trustedDependencies": [
+    "@parcel/watcher"
+  ]
 }
