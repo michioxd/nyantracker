@@ -15,6 +15,7 @@ export class PlayerController {
     private pendingBuffer: ArrayBuffer | null = null;
     private paused = true;
     private manuallyPaused = false;
+    private stopped = true;
     private readonly events: PlayerControllerEvents;
 
     constructor(events: PlayerControllerEvents, repeatCount: number = -1) {
@@ -52,12 +53,20 @@ export class PlayerController {
         });
         player.onMetadata((metadata) => this.events.onMetadata(metadata));
         player.onProgress((progress) => {
+            if (this.stopped) {
+                return;
+            }
             if (!this.manuallyPaused) {
                 this.paused = false;
             }
+            this.stopped = false;
             this.events.onProgress(progress);
         });
         player.onEnded(() => {
+            if (this.stopped) {
+                this.paused = true;
+                return;
+            }
             this.manuallyPaused = false;
             if (this.repeatCount !== 0) {
                 this.paused = false;
@@ -65,11 +74,13 @@ export class PlayerController {
             }
 
             this.paused = true;
+            this.stopped = true;
             this.events.onEnded();
         });
         player.onError((error) => {
             this.manuallyPaused = false;
             this.paused = true;
+            this.stopped = true;
             this.events.onError(`AUDIO ENGINE FAILED (${error.type})`);
         });
 
@@ -94,7 +105,16 @@ export class PlayerController {
         this.pendingBuffer = buffer;
         this.manuallyPaused = false;
         this.paused = false;
+        this.stopped = false;
         document.body.classList.add("playing");
+    }
+
+    stop(): void {
+        this.stopped = true;
+        this.paused = true;
+        this.player?.stop();
+        this.manuallyPaused = false;
+        document.body.classList.remove("playing");
     }
 
     togglePlayback(): boolean {
@@ -105,9 +125,14 @@ export class PlayerController {
 
         this.resumeContext();
         if (this.paused) {
+            if (this.stopped && this.pendingBuffer) {
+                this.play(this.pendingBuffer);
+                return this.paused;
+            }
             player.unpause();
             this.manuallyPaused = false;
             this.paused = false;
+            this.stopped = false;
             document.body.classList.add("playing");
         } else {
             player.pause();

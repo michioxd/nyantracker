@@ -103,4 +103,14 @@ export class OscilloscopeRenderer {
 
         context.stroke();
     }
+
+    reset(channelCount: number): void {
+        const count = Math.min(channelCount, this.phases.length);
+        for (let index = 0; index < count; index += 1) {
+            this.phases[index] = 0;
+            this.smoothedVolumes[index] = 0;
+            this.smoothedFrequencies[index] = 0;
+            this.smoothedWaveVariants[index] = 0;
+        }
+    }
 }

@@ -4,7 +4,6 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>nyantracker</title>
 </head>
 
@@ -24,6 +23,10 @@
           </button>
           <button id="btnPlay" disabled>
             <i class="ti ti-control-play"></i>
+            <i class="ti ti-control-pause"></i>
+          </button>
+          <button id="btnStop" disabled>
+            <i class="ti ti-control-stop"></i>
           </button>
           <button id="btnNextPat" disabled>
             <i class="ti ti-control-skip-forward"></i>
@@ -40,22 +43,7 @@
       </header>
 
       <section class="info-bar">
-        <div class="info-chip">
-          <span class="info-label">File</span>
-          <strong id="file-display">--</strong>
-        </div>
-        <div class="info-chip info-chip--wide">
-          <span class="info-label">Title</span>
-          <strong id="title-display">--</strong>
-        </div>
-        <div class="info-chip">
-          <span class="info-label">Duration</span>
-          <strong id="duration-display">--:--</strong>
-        </div>
-        <div class="info-chip info-chip--wide">
-          <span class="info-label">libopenmpt</span>
-          <strong id="library-display">--</strong>
-        </div>
+        <strong id="title-display">--</strong>
       </section>
 
       <section class="tweak-bar">
@@ -90,7 +78,7 @@
           <span id="pat-display">Pattern: --/--</span>
           <span id="row-display">Row: --/--</span>
           <span class="space"></span>
-          <a href="#" id="version-display">nyantracker v0.1.0</a>
+          <a href="#" id="version-display">nyantracker v0.1 by michioxd</a>
           <a href="https://github.com/michioxd/nyantracker" target="_blank">github</a>
         </div>
       </div>

@@ -17,6 +17,7 @@ interface TrackerElements {
     btnPrevPat: HTMLButtonElement;
     btnPlay: HTMLButtonElement;
     btnNextPat: HTMLButtonElement;
+    btnStop: HTMLButtonElement;
     progressCurrent: HTMLElement;
     progressTotal: HTMLElement;
     progressBar: HTMLElement;
@@ -26,10 +27,7 @@ interface TrackerElements {
     patDisplay: HTMLElement;
     rowDisplay: HTMLElement;
     topStatus: HTMLElement;
-    fileDisplay: HTMLElement;
     titleDisplay: HTMLElement;
-    durationDisplay: HTMLElement;
-    libraryDisplay: HTMLElement;
     volumeSlider: HTMLInputElement;
     volumeOutput: HTMLOutputElement;
     pitchSlider: HTMLInputElement;
@@ -88,7 +86,11 @@ export class nyantracker {
                 onMetadata: (metadata) => this.handleMetadata(metadata),
                 onProgress: (progress) => this.handleProgress(progress),
                 onError: (message) => this.updateStatus(message),
-                onEnded: () => this.updateStatus("ENDED"),
+                onEnded: () => {
+                    this.player.stop();
+                    this.resetTrackerViewToStart();
+                    this.updateStatus("STOPPED");
+                },
             },
             0,
         );
@@ -124,6 +126,13 @@ export class nyantracker {
                 this.lastFrameTime = performance.now();
             }
             this.updateStatus(paused ? "PAUSED" : "PLAYING");
+        });
+
+        this.elements.btnStop.addEventListener("click", () => {
+            this.player.stop();
+            this.resetTrackerViewToStart();
+            this.updateProgressUi(0, this.durationSeconds || this.player.instance?.duration || 0);
+            this.updateStatus("STOPPED");
         });
 
         this.elements.btnPrevPat.addEventListener("click", () => this.stepOrder(-1));
@@ -223,7 +232,6 @@ export class nyantracker {
 
         this.player.ensure();
         this.currentFileName = file.name;
-        this.elements.fileDisplay.textContent = file.name;
         this.updateStatus("PARSING MODULE...");
 
         const buffer = await file.arrayBuffer();
@@ -297,17 +305,17 @@ export class nyantracker {
         this.elements.btnPlay.disabled = false;
         this.elements.btnPrevPat.disabled = false;
         this.elements.btnNextPat.disabled = false;
+        this.elements.btnStop.disabled = false;
     }
 
     private handleMetadata(metadata: ChiptuneMetadata): void {
         this.durationSeconds = metadata.dur;
         this.elements.titleDisplay.textContent =
             typeof metadata.title === "string" && metadata.title ? metadata.title : this.currentFileName;
-        this.elements.durationDisplay.textContent = formatDuration(metadata.dur);
         this.elements.progressTotal.textContent = formatDuration(metadata.dur);
-        this.elements.libraryDisplay.textContent = metadata.libopenmptVersion
-            ? `${metadata.libopenmptVersion} (${metadata.libopenmptBuild ?? "n/a"})`
-            : "--";
+        // this.elements.libraryDisplay.textContent = metadata.libopenmptVersion
+        //     ? `${metadata.libopenmptVersion} (${metadata.libopenmptBuild ?? "n/a"})`
+        //     : "--";
     }
 
     private handleProgress(progress: ChiptuneProgress): void {
@@ -474,6 +482,35 @@ export class nyantracker {
                 channel,
             );
         }
+    }
+
+    private resetTrackerViewToStart(): void {
+        this.currentRow = -1;
+        this.channelFreqs.fill(0);
+        this.channelInstruments.fill(0);
+
+        if (this.legacyModule && this.uiModulePtr) {
+            this.syncLegacyModuleToSeconds(0);
+
+            if (!this.patternCache.has(0)) {
+                this.patternCachePattern(0);
+            } else {
+                this.patternView.renderPattern(0, this.patternCache.get(0)!);
+            }
+        } else {
+            this.patternView.resetPlaybackState();
+        }
+
+        this.oscilloscopeRenderer.reset(this.numChannels);
+        this.drawOscilloscopes();
+        this.elements.posDisplay.textContent = `Position: ${formatCounter(0, this.getTotalOrders())}`;
+        this.elements.patDisplay.textContent = `Pattern: ${formatCounter(0, this.getTotalPatterns())}`;
+        this.elements.rowDisplay.textContent = `Row: ${formatCounter(0, this.getCurrentPatternRowCount(0))}`;
+
+        requestAnimationFrame(() => {
+            this.currentRow = 0;
+            this.patternView.highlightRow(0);
+        });
     }
 
     private stepOrder(direction: -1 | 1): void {

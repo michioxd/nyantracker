@@ -357,9 +357,31 @@ input[type="range"] {
     scroll-behavior: smooth;
 }
 
-body.playing .pattern-body {
-    scroll-behavior: unset;
-    overflow: hidden;
+#btnPlay {
+    .ti-control-play {
+        display: inline-block;
+    }
+
+    .ti-control-pause {
+        display: none;
+    }
+}
+
+body.playing {
+    #btnPlay {
+        .ti-control-play {
+            display: none;
+        }
+
+        .ti-control-pause {
+            display: inline-block;
+        }
+    }
+
+    .pattern-body {
+        scroll-behavior: unset;
+        overflow: hidden;
+    }
 }
 
 .pattern-row {

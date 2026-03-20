@@ -126,4 +126,14 @@ export class PatternView {
     getCurrentPattern(): number {
         return this.currentPattern;
     }
+
+    resetPlaybackState(): void {
+        if (this.activeRowElement) {
+            this.activeRowElement.classList.remove("active");
+        }
+
+        this.currentRow = -1;
+        this.activeRowElement = null;
+        this.body.scrollTop = 0;
+    }
 }
