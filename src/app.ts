@@ -13,49 +13,7 @@ import { PlayerController } from "./components/player-controller";
 import { BrowserPaneController } from "./features/browser-pane";
 import { ModlandBrowser } from "./features/modland-browser";
 import { readStorage, readStoredNumber, writeStorage } from "./utils/storage";
-
-interface TrackerElements {
-    songSelector: HTMLElement;
-    browserResizer: HTMLElement;
-    btnToggleBrowser: HTMLButtonElement;
-    searchInput: HTMLInputElement;
-    btnSongPrev: HTMLButtonElement;
-    songPageInfo: HTMLElement;
-    btnSongNext: HTMLButtonElement;
-    songList: HTMLElement;
-    fileInput: HTMLInputElement;
-    fileLabel: HTMLLabelElement;
-    btnPrevPat: HTMLButtonElement;
-    btnPlay: HTMLButtonElement;
-    btnNextPat: HTMLButtonElement;
-    btnStop: HTMLButtonElement;
-    btnShowTweaks: HTMLButtonElement;
-    tweakBar: HTMLElement;
-    progressCurrent: HTMLElement;
-    progressTotal: HTMLElement;
-    progressBar: HTMLElement;
-    progressHandler: HTMLElement;
-    progressFill: HTMLElement;
-    posDisplay: HTMLElement;
-    patDisplay: HTMLElement;
-    rowDisplay: HTMLElement;
-    topStatus: HTMLElement;
-    titleDisplay: HTMLElement;
-    volumeSlider: HTMLInputElement;
-    volumeOutput: HTMLOutputElement;
-    pitchSlider: HTMLInputElement;
-    pitchOutput: HTMLOutputElement;
-    tempoSlider: HTMLInputElement;
-    tempoOutput: HTMLOutputElement;
-    mainContainer: HTMLElement;
-    patternViewContainer: HTMLElement;
-    patternHeader: HTMLElement;
-    patternBody: HTMLElement;
-    oscResizer: HTMLElement;
-    oscView: HTMLElement;
-    dropZone: HTMLElement;
-    dropIndicator: HTMLElement;
-}
+import type { TrackerElements } from "./types/global";
 
 export class nyantracker {
     private static readonly SAMPLE_RATE = 48000;
