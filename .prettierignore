@@ -33,3 +33,4 @@ yarn-error.log*
 
 bun.lock
 .next/
+src/lib/chiptune2/

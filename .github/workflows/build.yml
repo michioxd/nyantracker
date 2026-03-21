@@ -1,0 +1,22 @@
+name: Publish
+
+on:
+    push:
+        branches: ["main"]
+    pull_request:
+        branches: ["main"]
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+            - uses: oven-sh/setup-bun@v2
+            - run: bun i
+            - run: bun run build && echo "nyantracker.michioxd.ch" > ./dist/CNAME
+            - run: cp ./dist/index.html ./dist/404.html
+            - name: Deploy
+              uses: peaceiris/actions-gh-pages@v3
+              with:
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
+                  publish_dir: ./dist
