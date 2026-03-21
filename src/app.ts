@@ -10,6 +10,7 @@ import {
 import { OscilloscopeRenderer } from "./components/oscilloscope";
 import { PatternView } from "./components/pattern-view";
 import { PlayerController } from "./components/player-controller";
+import { BrowserPaneController } from "./features/browser-pane";
 import { ModlandBrowser } from "./features/modland-browser";
 import { readStorage, readStoredNumber, writeStorage } from "./utils/storage";
 
@@ -66,7 +67,6 @@ export class nyantracker {
     private static readonly STORAGE_KEY_BROWSER_OPEN = "nyantracker:browser-open";
     private static readonly STORAGE_KEY_OSC_HEIGHT = "nyantracker:osc-height";
     private static readonly MIN_BROWSER_WIDTH = 280;
-    private static readonly BROWSER_TOGGLE_THRESHOLD = nyantracker.MIN_BROWSER_WIDTH / 2;
     private static readonly MIN_TRACKER_WIDTH = 520;
     private static readonly MIN_OSC_HEIGHT = 200;
     private static readonly PATTERN_MIN_HEIGHT = 120;
@@ -103,13 +103,12 @@ export class nyantracker {
     private readonly oscilloscopeRenderer = new OscilloscopeRenderer();
     private readonly patternView: PatternView;
     private readonly player: PlayerController;
+    private readonly browserPane: BrowserPaneController;
     private readonly modlandBrowser: ModlandBrowser;
     private requestedPatternIndex = -1;
     private patternPrefetchScheduled = false;
     private patternResizeObserver: ResizeObserver | null = null;
     private patternLayoutSyncScheduled = false;
-    private preferredBrowserWidth: number | null = null;
-    private browserOpen = true;
     private preferredOscHeight: number | null = null;
     private preferredOscHidden = false;
 
@@ -135,6 +134,27 @@ export class nyantracker {
                 onStatusChange: (status) => this.updateStatus(status),
                 onLoadModule: async (_entry, buffer, fileName) => {
                     await this.loadArrayBuffer(buffer, fileName);
+                },
+            },
+        );
+        this.browserPane = new BrowserPaneController(
+            {
+                root,
+                songSelector: elements.songSelector,
+                browserResizer: elements.browserResizer,
+                btnToggleBrowser: elements.btnToggleBrowser,
+            },
+            {
+                storageKeyWidth: nyantracker.STORAGE_KEY_BROWSER_WIDTH,
+                storageKeyOpen: nyantracker.STORAGE_KEY_BROWSER_OPEN,
+                minWidth: nyantracker.MIN_BROWSER_WIDTH,
+                minTrackerWidth: nyantracker.MIN_TRACKER_WIDTH,
+                compactMediaQuery: "(width <= 960px)",
+                onOpen: async () => {
+                    await this.modlandBrowser.initCatalog();
+                },
+                onLayoutChange: () => {
+                    this.schedulePatternLayoutSync();
                 },
             },
         );
@@ -165,9 +185,9 @@ export class nyantracker {
         try {
             this.legacyModule = await loadLegacyOpenMpt();
             this.elements.fileInput.disabled = false;
-            this.elements.btnToggleBrowser.disabled = false;
+            this.browserPane.setEnabled(true);
             this.updateStatus("IDLE");
-            if (this.browserOpen) {
+            if (this.browserPane.isOpen()) {
                 void this.modlandBrowser.initCatalog();
             }
         } catch (e) {
@@ -187,9 +207,7 @@ export class nyantracker {
         });
         this.modlandBrowser.bindEvents();
 
-        this.elements.btnToggleBrowser.addEventListener("click", () => {
-            void this.setBrowserOpen(!this.browserOpen);
-        });
+        this.browserPane.bindEvents();
 
         this.elements.btnPlay.addEventListener("click", () => {
             const paused = this.player.togglePlayback();
@@ -303,37 +321,7 @@ export class nyantracker {
     }
 
     private bindResizers(): void {
-        this.elements.browserResizer.addEventListener("pointerdown", (event) => {
-            if (this.isCompactLayout()) {
-                return;
-            }
-
-            const startX = event.clientX;
-            const startWidth = this.browserOpen ? this.elements.songSelector.getBoundingClientRect().width : 0;
-            let nextWidth = startWidth;
-
-            this.beginResizeGesture(
-                this.elements.browserResizer,
-                event.pointerId,
-                (moveEvent) => {
-                    nextWidth = Math.max(0, startWidth + (moveEvent.clientX - startX));
-                    this.previewBrowserResize(nextWidth);
-                },
-                () => {
-                    if (nextWidth < nyantracker.BROWSER_TOGGLE_THRESHOLD) {
-                        void this.setBrowserOpen(false);
-                        return;
-                    }
-
-                    this.setBrowserWidth(nextWidth);
-                    if (!this.browserOpen) {
-                        void this.setBrowserOpen(true);
-                    } else {
-                        this.root.classList.remove("browser-hidden");
-                    }
-                },
-            );
-        });
+        this.browserPane.bindResizers();
 
         this.elements.oscResizer.addEventListener("pointerdown", (event) => {
             if (this.isCompactLayout()) {
@@ -375,12 +363,7 @@ export class nyantracker {
         });
     }
 
-    private beginResizeGesture(
-        handle: HTMLElement,
-        pointerId: number,
-        onMove: (event: PointerEvent) => void,
-        onEnd?: () => void,
-    ): void {
+    private beginResizeGesture(handle: HTMLElement, pointerId: number, onMove: (event: PointerEvent) => void): void {
         handle.classList.add("is-resizing");
         handle.setPointerCapture(pointerId);
 
@@ -401,7 +384,6 @@ export class nyantracker {
 
         const onPointerUp = () => {
             stop();
-            onEnd?.();
         };
 
         handle.addEventListener("pointermove", onPointerMove);
@@ -410,21 +392,13 @@ export class nyantracker {
     }
 
     private applyResponsiveLayoutState(): void {
+        this.browserPane.applyResponsiveLayoutState();
+
         if (this.isCompactLayout()) {
-            if (this.browserOpen) {
-                this.elements.songSelector.style.width = "";
-            }
             this.elements.oscView.classList.remove("osc-view--hidden");
             this.elements.oscView.style.height = "";
             return;
         }
-
-        if (!this.browserOpen) {
-            return;
-        }
-
-        const currentBrowserWidth = this.elements.songSelector.getBoundingClientRect().width;
-        this.setBrowserWidth(this.preferredBrowserWidth ?? currentBrowserWidth, false);
 
         if (this.preferredOscHidden) {
             this.applyOscHiddenState(false);
@@ -437,32 +411,6 @@ export class nyantracker {
 
     private isCompactLayout(): boolean {
         return window.matchMedia("(width <= 960px)").matches;
-    }
-
-    private clampBrowserWidth(width: number): number {
-        const rootWidth = this.root.getBoundingClientRect().width;
-        const maxWidth = Math.max(nyantracker.MIN_BROWSER_WIDTH, rootWidth - nyantracker.MIN_TRACKER_WIDTH);
-        return Math.max(nyantracker.MIN_BROWSER_WIDTH, Math.min(maxWidth, width));
-    }
-
-    private setBrowserWidth(width: number, persist = true): void {
-        const clampedWidth = this.clampBrowserWidth(width);
-        this.preferredBrowserWidth = clampedWidth;
-        this.elements.songSelector.style.width = `${clampedWidth}px`;
-
-        if (persist) {
-            writeStorage(nyantracker.STORAGE_KEY_BROWSER_WIDTH, String(Math.round(clampedWidth)));
-        }
-    }
-
-    private previewBrowserResize(width: number): void {
-        if (width < nyantracker.BROWSER_TOGGLE_THRESHOLD) {
-            this.root.classList.add("browser-hidden");
-            return;
-        }
-
-        this.root.classList.remove("browser-hidden");
-        this.elements.songSelector.style.width = `${this.clampBrowserWidth(width)}px`;
     }
 
     private getMaxOscHeight(): number {
@@ -503,29 +451,6 @@ export class nyantracker {
 
     private isOscHidden(): boolean {
         return this.elements.oscView.classList.contains("osc-view--hidden");
-    }
-
-    private async setBrowserOpen(nextOpen: boolean): Promise<void> {
-        if (this.browserOpen === nextOpen) {
-            return;
-        }
-
-        this.browserOpen = nextOpen;
-        writeStorage(nyantracker.STORAGE_KEY_BROWSER_OPEN, String(nextOpen));
-        this.applyBrowserVisibility();
-
-        if (nextOpen) {
-            await this.modlandBrowser.initCatalog();
-        }
-    }
-
-    private applyBrowserVisibility(): void {
-        this.root.classList.toggle("browser-hidden", !this.browserOpen);
-        this.elements.btnToggleBrowser.classList.toggle("is-active", this.browserOpen);
-        this.elements.btnToggleBrowser.setAttribute("aria-pressed", String(this.browserOpen));
-        this.elements.btnToggleBrowser.title = this.browserOpen ? "Hide song browser" : "Show song browser";
-        this.applyResponsiveLayoutState();
-        this.schedulePatternLayoutSync();
     }
 
     private async loadFile(file: File): Promise<void> {
@@ -1245,17 +1170,7 @@ export class nyantracker {
         const tweakBarHidden = readStorage(nyantracker.STORAGE_KEY_TWEAKBAR_HIDDEN) === "true";
         this.elements.tweakBar.classList.toggle("tweak-bar--hidden", tweakBarHidden);
 
-        const savedBrowserWidth = readStoredNumber(nyantracker.STORAGE_KEY_BROWSER_WIDTH);
-        if (savedBrowserWidth !== null) {
-            this.preferredBrowserWidth = savedBrowserWidth;
-        }
-
-        const savedBrowserOpen = readStorage(nyantracker.STORAGE_KEY_BROWSER_OPEN);
-        if (savedBrowserOpen !== null) {
-            this.browserOpen = savedBrowserOpen !== "false";
-        }
-
-        this.applyBrowserVisibility();
+        this.browserPane.restorePersistedState();
 
         const savedOscHeight = readStoredNumber(nyantracker.STORAGE_KEY_OSC_HEIGHT);
         if (savedOscHeight !== null) {
