@@ -108,6 +108,9 @@ export class nyantracker {
             {
                 renderLimit: 300,
                 storageKeySearch: nyantracker.STORAGE_KEY_SEARCH,
+                onBeforeLoadModule: (entry) => {
+                    this.prepareForIncomingLoad(entry.archiveEntryName, `${entry.artist} - ${entry.title}`);
+                },
                 onStatusChange: (status) => this.updateStatus(status),
                 onLoadModule: async (_entry, buffer, fileName) => {
                     await this.loadArrayBuffer(buffer, fileName);
@@ -276,6 +279,7 @@ export class nyantracker {
             return;
         }
 
+        this.prepareForIncomingLoad(file.name, file.name);
         this.player.ensure();
         this.player.setVolume(Number(this.elements.volumeSlider.value));
         this.modlandBrowser.setActiveSong(file.name);
@@ -900,6 +904,51 @@ export class nyantracker {
 
     private updateStatus(status: string): void {
         this.elements.topStatus.textContent = status;
+    }
+
+    private prepareForIncomingLoad(fileName: string, displayTitle: string): void {
+        this.player.stop();
+
+        if (this.legacyModule && this.uiModulePtr) {
+            this.legacyModule._openmpt_module_destroy(this.uiModulePtr);
+            this.uiModulePtr = 0;
+        }
+
+        this.currentFileName = fileName;
+        this.durationSeconds = 0;
+        this.totalOrders = 0;
+        this.totalPatterns = 0;
+        this.currentRow = -1;
+        this.lastFrameTime = performance.now();
+        this.lastSeekTime = 0;
+        this.fractionalFrames = 0;
+        this.patternCache.clear();
+        this.patternPrefetchQueue.length = 0;
+        this.patternPrefetchInFlight.clear();
+        this.patternPrefetchScheduled = false;
+        this.requestedPatternIndex = -1;
+        this.orderStartSeconds.clear();
+        this.patternRowCounts.clear();
+        this.channelFreqs.fill(0);
+        this.channelInstruments.fill(0);
+        this.oscilloscopeRenderer.reset(this.maxChannels);
+        this.numChannels = 0;
+
+        for (let channel = 0; channel < this.maxChannels; channel += 1) {
+            this.channelCanvases[channel] = null;
+            this.channelVuFills[channel] = null;
+        }
+
+        this.patternView.clear();
+        this.elements.titleDisplay.textContent = displayTitle;
+        this.elements.posDisplay.textContent = "Position: --/--";
+        this.elements.patDisplay.textContent = "Pattern: --/--";
+        this.elements.rowDisplay.textContent = "Row: --/--";
+        this.elements.btnPlay.disabled = true;
+        this.elements.btnPrevPat.disabled = true;
+        this.elements.btnNextPat.disabled = true;
+        this.elements.btnStop.disabled = true;
+        this.updateProgressUi(0, 0);
     }
 
     private async loadArrayBuffer(buffer: ArrayBuffer, fileName: string): Promise<void> {

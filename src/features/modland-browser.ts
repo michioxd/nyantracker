@@ -14,6 +14,7 @@ export interface ModlandBrowserElements {
 export interface ModlandBrowserOptions {
     renderLimit: number;
     storageKeySearch: string;
+    onBeforeLoadModule?: (entry: ModlandEntry) => void;
     onStatusChange: (status: string) => void;
     onLoadModule: (entry: ModlandEntry, buffer: ArrayBuffer, fileName: string) => Promise<void>;
 }
@@ -165,6 +166,7 @@ export class ModlandBrowser {
     }
 
     private async loadEntry(entry: ModlandEntry): Promise<void> {
+        this.options.onBeforeLoadModule?.(entry);
         this.setActiveSong(entry.path);
         this.elements.titleDisplay.textContent = `${entry.artist} - ${entry.title}`;
         this.options.onStatusChange("FETCHING MODULE... 0%");

@@ -183,6 +183,23 @@ export class PatternView {
         return this.currentPattern;
     }
 
+    clear(): void {
+        if (this.activeRowElement) {
+            this.activeRowElement.classList.remove("active");
+        }
+
+        this.currentPattern = -1;
+        this.currentRow = -1;
+        this.pendingHighlightedRow = -1;
+        this.activeRowElement = null;
+        this.header.innerHTML = '<div class="row-number-header"></div>';
+        this.body.innerHTML = "";
+        this.body.scrollTop = 0;
+        this.oscilloscopeContainer.innerHTML = "";
+        this.oscilloscopeContainer.style.gridTemplateColumns = "";
+        this.oscilloscopeContainer.style.gridTemplateRows = "";
+    }
+
     resetPlaybackState(): void {
         if (this.activeRowElement) {
             this.activeRowElement.classList.remove("active");
