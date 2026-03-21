@@ -17,7 +17,7 @@ jobs:
             - uses: oven-sh/setup-bun@v2
             - run: bun i
             - run: bun run build && echo "nyantracker.michioxd.ch" > ./dist/CNAME
-            - run: cp ./dist/index.html ./dist/404.html && cp ./src/lib/chiptune2/libopenmpt.js.mem ./dist/assets/libopenmpt.js.mem
+            - run: cp ./dist/index.html ./dist/404.html && cp ./src/lib/chiptune2/libopenmpt.js.mem ./dist/assets/libopenmpt.js.mem && cp ./src/lib/chiptune2/libopenmpt.worklet.js ./dist/assets/libopenmpt.worklet.js
             - name: Deploy
               uses: peaceiris/actions-gh-pages@v3
               with:
