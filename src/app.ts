@@ -58,6 +58,7 @@ export class nyantracker {
     private currentFileName = "--";
     private durationSeconds = 0;
     private seeking = false;
+    private lastSeekTime = 0;
     private totalOrders = 0;
     private totalPatterns = 0;
     private lastProgressPercent = -1;
@@ -331,6 +332,7 @@ export class nyantracker {
     }
 
     private handleProgress(progress: ChiptuneProgress): void {
+        if (this.seeking || performance.now() - this.lastSeekTime < 300) return;
         this.updateProgressUi(progress.pos, this.durationSeconds || this.player.instance?.duration || 0);
 
         if (this.legacyModule && this.uiModulePtr) {
@@ -657,7 +659,11 @@ export class nyantracker {
 
         const targetSeconds = this.syncLegacyModuleToSeconds(this.getOrderStartSeconds(targetOrder));
         this.player.seek(targetSeconds);
-        this.lastFrameTime = performance.now();
+
+        const now = performance.now();
+        this.lastFrameTime = now;
+        this.lastSeekTime = now;
+
         this.updateProgressUi(targetSeconds, this.durationSeconds || this.player.instance?.duration || 0);
     }
 
@@ -675,7 +681,11 @@ export class nyantracker {
         const seconds = ratio * this.durationSeconds;
         const targetSeconds = this.syncLegacyModuleToSeconds(seconds);
         this.player.seek(targetSeconds);
-        this.lastFrameTime = performance.now();
+
+        const now = performance.now();
+        this.lastFrameTime = now;
+        this.lastSeekTime = now;
+
         this.updateProgressUi(targetSeconds, this.durationSeconds);
     }
 
