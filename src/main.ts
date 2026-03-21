@@ -17,6 +17,9 @@ if (!appRoot) {
 }
 
 const trackerApp = new nyantracker(appRoot, {
+    songSelector: getElement<HTMLElement>(appRoot, ".song-selector"),
+    browserResizer: getElement<HTMLElement>(appRoot, ".resize-browser"),
+    btnToggleBrowser: getElement<HTMLButtonElement>(appRoot, "#btnToggleBrowser"),
     searchInput: getElement<HTMLInputElement>(appRoot, "#searchInput"),
     btnSongPrev: getElement<HTMLButtonElement>(appRoot, "#btnSongPrev"),
     songPageInfo: getElement<HTMLElement>(appRoot, "#songPageInfo"),
@@ -46,8 +49,11 @@ const trackerApp = new nyantracker(appRoot, {
     pitchOutput: getElement<HTMLOutputElement>(appRoot, "#pitch-output"),
     tempoSlider: getElement<HTMLInputElement>(appRoot, "#tempo-slider"),
     tempoOutput: getElement<HTMLOutputElement>(appRoot, "#tempo-output"),
+    mainContainer: getElement<HTMLElement>(appRoot, ".main-container"),
+    patternViewContainer: getElement<HTMLElement>(appRoot, ".pattern-view"),
     patternHeader: getElement<HTMLElement>(appRoot, "#pattern-header"),
     patternBody: getElement<HTMLElement>(appRoot, "#pattern-body"),
+    oscResizer: getElement<HTMLElement>(appRoot, ".resize-osc"),
     oscView: getElement<HTMLElement>(appRoot, "#osc-view"),
     dropZone: getElement<HTMLElement>(appRoot, "#drop-zone"),
     dropIndicator: getElement<HTMLElement>(appRoot, "#drop-indicator"),

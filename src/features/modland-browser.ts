@@ -27,6 +27,8 @@ export class ModlandBrowser {
     private activePath = "";
     private selectedSongItem: HTMLElement | null = null;
     private page = 0;
+    private catalogLoaded = false;
+    private catalogPromise: Promise<void> | null = null;
 
     constructor(elements: ModlandBrowserElements, options: ModlandBrowserOptions) {
         this.elements = elements;
@@ -67,17 +69,32 @@ export class ModlandBrowser {
     }
 
     async initCatalog(): Promise<void> {
+        if (this.catalogLoaded) {
+            return;
+        }
+
+        if (this.catalogPromise) {
+            return this.catalogPromise;
+        }
+
         this.updatePagination(0, 0, "Loading...");
 
-        try {
-            this.entries = await fetchModlandCatalog();
-            this.applyFilter();
-            this.options.onStatusChange("IDLE");
-        } catch (error) {
-            console.error("Failed to load Modland catalog:", error);
-            this.updatePagination(0, 0, "Unavailable");
-            this.options.onStatusChange("MODLAND CATALOG FAILED");
-        }
+        this.catalogPromise = (async () => {
+            try {
+                this.entries = await fetchModlandCatalog();
+                this.catalogLoaded = true;
+                this.applyFilter();
+                this.options.onStatusChange("IDLE");
+            } catch (error) {
+                console.error("Failed to load Modland catalog:", error);
+                this.updatePagination(0, 0, "Unavailable");
+                this.options.onStatusChange("MODLAND CATALOG FAILED");
+            } finally {
+                this.catalogPromise = null;
+            }
+        })();
+
+        return this.catalogPromise;
     }
 
     setActiveSong(pathOrFileName: string): void {

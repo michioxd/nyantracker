@@ -14,6 +14,9 @@ import { ModlandBrowser } from "./features/modland-browser";
 import { readStorage, readStoredNumber, writeStorage } from "./utils/storage";
 
 interface TrackerElements {
+    songSelector: HTMLElement;
+    browserResizer: HTMLElement;
+    btnToggleBrowser: HTMLButtonElement;
     searchInput: HTMLInputElement;
     btnSongPrev: HTMLButtonElement;
     songPageInfo: HTMLElement;
@@ -43,8 +46,11 @@ interface TrackerElements {
     pitchOutput: HTMLOutputElement;
     tempoSlider: HTMLInputElement;
     tempoOutput: HTMLOutputElement;
+    mainContainer: HTMLElement;
+    patternViewContainer: HTMLElement;
     patternHeader: HTMLElement;
     patternBody: HTMLElement;
+    oscResizer: HTMLElement;
     oscView: HTMLElement;
     dropZone: HTMLElement;
     dropIndicator: HTMLElement;
@@ -56,6 +62,15 @@ export class nyantracker {
     private static readonly STORAGE_KEY_TWEAKBAR_HIDDEN = "nyantracker:tweakbar-hidden";
     private static readonly STORAGE_KEY_VOLUME = "nyantracker:volume";
     private static readonly STORAGE_KEY_SEARCH = "nyantracker:modland-search";
+    private static readonly STORAGE_KEY_BROWSER_WIDTH = "nyantracker:browser-width";
+    private static readonly STORAGE_KEY_BROWSER_OPEN = "nyantracker:browser-open";
+    private static readonly STORAGE_KEY_OSC_HEIGHT = "nyantracker:osc-height";
+    private static readonly MIN_BROWSER_WIDTH = 280;
+    private static readonly BROWSER_TOGGLE_THRESHOLD = nyantracker.MIN_BROWSER_WIDTH / 2;
+    private static readonly MIN_TRACKER_WIDTH = 520;
+    private static readonly MIN_OSC_HEIGHT = 200;
+    private static readonly PATTERN_MIN_HEIGHT = 120;
+    private static readonly OSC_HIDE_THRESHOLD = nyantracker.MIN_OSC_HEIGHT / 2;
     private fractionalFrames = 0;
     private readonly root: HTMLElement;
     private readonly elements: TrackerElements;
@@ -91,6 +106,12 @@ export class nyantracker {
     private readonly modlandBrowser: ModlandBrowser;
     private requestedPatternIndex = -1;
     private patternPrefetchScheduled = false;
+    private patternResizeObserver: ResizeObserver | null = null;
+    private patternLayoutSyncScheduled = false;
+    private preferredBrowserWidth: number | null = null;
+    private browserOpen = true;
+    private preferredOscHeight: number | null = null;
+    private preferredOscHidden = false;
 
     constructor(root: HTMLElement, elements: TrackerElements) {
         this.root = root;
@@ -144,8 +165,11 @@ export class nyantracker {
         try {
             this.legacyModule = await loadLegacyOpenMpt();
             this.elements.fileInput.disabled = false;
+            this.elements.btnToggleBrowser.disabled = false;
             this.updateStatus("IDLE");
-            void this.modlandBrowser.initCatalog();
+            if (this.browserOpen) {
+                void this.modlandBrowser.initCatalog();
+            }
         } catch (e) {
             console.error("Failed to load legacy OpenMPT module:", e);
             this.updateStatus("INITIALIZATION FAILED");
@@ -162,6 +186,10 @@ export class nyantracker {
             await this.loadFile(file);
         });
         this.modlandBrowser.bindEvents();
+
+        this.elements.btnToggleBrowser.addEventListener("click", () => {
+            void this.setBrowserOpen(!this.browserOpen);
+        });
 
         this.elements.btnPlay.addEventListener("click", () => {
             const paused = this.player.togglePlayback();
@@ -238,10 +266,8 @@ export class nyantracker {
         });
 
         window.addEventListener("resize", () => {
-            this.patternView.updatePadding();
-            if (this.currentRow >= 0) {
-                this.patternView.highlightRow(this.currentRow);
-            }
+            this.applyResponsiveLayoutState();
+            this.schedulePatternLayoutSync();
         });
 
         ["dragenter", "dragover"].forEach((eventName) => {
@@ -265,12 +291,241 @@ export class nyantracker {
             }
             await this.loadFile(file);
         });
+
+        this.bindResizers();
+        this.bindPatternResizeObserver();
     }
 
     private updateSliderOutputs(): void {
         this.elements.volumeOutput.value = `${Math.round(Number(this.elements.volumeSlider.value) * 100)}%`;
         this.elements.pitchOutput.value = `${Number(this.elements.pitchSlider.value).toFixed(2)}x`;
         this.elements.tempoOutput.value = `${Number(this.elements.tempoSlider.value).toFixed(2)}x`;
+    }
+
+    private bindResizers(): void {
+        this.elements.browserResizer.addEventListener("pointerdown", (event) => {
+            if (this.isCompactLayout()) {
+                return;
+            }
+
+            const startX = event.clientX;
+            const startWidth = this.browserOpen ? this.elements.songSelector.getBoundingClientRect().width : 0;
+            let nextWidth = startWidth;
+
+            this.beginResizeGesture(
+                this.elements.browserResizer,
+                event.pointerId,
+                (moveEvent) => {
+                    nextWidth = Math.max(0, startWidth + (moveEvent.clientX - startX));
+                    this.previewBrowserResize(nextWidth);
+                },
+                () => {
+                    if (nextWidth < nyantracker.BROWSER_TOGGLE_THRESHOLD) {
+                        void this.setBrowserOpen(false);
+                        return;
+                    }
+
+                    this.setBrowserWidth(nextWidth);
+                    if (!this.browserOpen) {
+                        void this.setBrowserOpen(true);
+                    } else {
+                        this.root.classList.remove("browser-hidden");
+                    }
+                },
+            );
+        });
+
+        this.elements.oscResizer.addEventListener("pointerdown", (event) => {
+            if (this.isCompactLayout()) {
+                return;
+            }
+
+            const startY = event.clientY;
+            const startHeight = this.isOscHidden() ? 0 : this.elements.oscView.getBoundingClientRect().height;
+
+            this.beginResizeGesture(this.elements.oscResizer, event.pointerId, (moveEvent) => {
+                const proposedHeight = startHeight - (moveEvent.clientY - startY);
+                this.applyOscHeight(proposedHeight);
+            });
+        });
+
+        this.applyResponsiveLayoutState();
+    }
+
+    private bindPatternResizeObserver(): void {
+        this.patternResizeObserver?.disconnect();
+        this.patternResizeObserver = new ResizeObserver(() => {
+            this.schedulePatternLayoutSync();
+        });
+        this.patternResizeObserver.observe(this.elements.patternViewContainer);
+    }
+
+    private schedulePatternLayoutSync(): void {
+        if (this.patternLayoutSyncScheduled) {
+            return;
+        }
+
+        this.patternLayoutSyncScheduled = true;
+        requestAnimationFrame(() => {
+            this.patternLayoutSyncScheduled = false;
+            this.patternView.updatePadding();
+            if (this.currentRow >= 0) {
+                this.patternView.highlightRow(this.currentRow);
+            }
+        });
+    }
+
+    private beginResizeGesture(
+        handle: HTMLElement,
+        pointerId: number,
+        onMove: (event: PointerEvent) => void,
+        onEnd?: () => void,
+    ): void {
+        handle.classList.add("is-resizing");
+        handle.setPointerCapture(pointerId);
+
+        const stop = () => {
+            handle.classList.remove("is-resizing");
+            if (handle.hasPointerCapture(pointerId)) {
+                handle.releasePointerCapture(pointerId);
+            }
+
+            handle.removeEventListener("pointermove", onPointerMove);
+            handle.removeEventListener("pointerup", onPointerUp);
+            handle.removeEventListener("pointercancel", onPointerUp);
+        };
+
+        const onPointerMove = (event: PointerEvent) => {
+            onMove(event);
+        };
+
+        const onPointerUp = () => {
+            stop();
+            onEnd?.();
+        };
+
+        handle.addEventListener("pointermove", onPointerMove);
+        handle.addEventListener("pointerup", onPointerUp);
+        handle.addEventListener("pointercancel", onPointerUp);
+    }
+
+    private applyResponsiveLayoutState(): void {
+        if (this.isCompactLayout()) {
+            if (this.browserOpen) {
+                this.elements.songSelector.style.width = "";
+            }
+            this.elements.oscView.classList.remove("osc-view--hidden");
+            this.elements.oscView.style.height = "";
+            return;
+        }
+
+        if (!this.browserOpen) {
+            return;
+        }
+
+        const currentBrowserWidth = this.elements.songSelector.getBoundingClientRect().width;
+        this.setBrowserWidth(this.preferredBrowserWidth ?? currentBrowserWidth, false);
+
+        if (this.preferredOscHidden) {
+            this.applyOscHiddenState(false);
+            return;
+        }
+
+        const currentOscHeight = this.elements.oscView.getBoundingClientRect().height;
+        this.applyOscHeight(this.preferredOscHeight ?? (currentOscHeight || nyantracker.MIN_OSC_HEIGHT), false);
+    }
+
+    private isCompactLayout(): boolean {
+        return window.matchMedia("(width <= 960px)").matches;
+    }
+
+    private clampBrowserWidth(width: number): number {
+        const rootWidth = this.root.getBoundingClientRect().width;
+        const maxWidth = Math.max(nyantracker.MIN_BROWSER_WIDTH, rootWidth - nyantracker.MIN_TRACKER_WIDTH);
+        return Math.max(nyantracker.MIN_BROWSER_WIDTH, Math.min(maxWidth, width));
+    }
+
+    private setBrowserWidth(width: number, persist = true): void {
+        const clampedWidth = this.clampBrowserWidth(width);
+        this.preferredBrowserWidth = clampedWidth;
+        this.elements.songSelector.style.width = `${clampedWidth}px`;
+
+        if (persist) {
+            writeStorage(nyantracker.STORAGE_KEY_BROWSER_WIDTH, String(Math.round(clampedWidth)));
+        }
+    }
+
+    private previewBrowserResize(width: number): void {
+        if (width < nyantracker.BROWSER_TOGGLE_THRESHOLD) {
+            this.root.classList.add("browser-hidden");
+            return;
+        }
+
+        this.root.classList.remove("browser-hidden");
+        this.elements.songSelector.style.width = `${this.clampBrowserWidth(width)}px`;
+    }
+
+    private getMaxOscHeight(): number {
+        const containerHeight = this.elements.mainContainer.getBoundingClientRect().height;
+        const statusHeight = this.elements.topStatus.parentElement?.getBoundingClientRect().height ?? 0;
+        const resizerHeight = this.elements.oscResizer.getBoundingClientRect().height;
+        return Math.max(
+            nyantracker.MIN_OSC_HEIGHT,
+            containerHeight - statusHeight - resizerHeight - nyantracker.PATTERN_MIN_HEIGHT,
+        );
+    }
+
+    private applyOscHeight(height: number, persist = true): void {
+        if (height < nyantracker.OSC_HIDE_THRESHOLD) {
+            this.applyOscHiddenState(persist);
+            return;
+        }
+
+        const clampedHeight = Math.max(nyantracker.MIN_OSC_HEIGHT, Math.min(this.getMaxOscHeight(), height));
+        this.preferredOscHidden = false;
+        this.preferredOscHeight = clampedHeight;
+        this.elements.oscView.classList.remove("osc-view--hidden");
+        this.elements.oscView.style.height = `${clampedHeight}px`;
+        if (persist) {
+            writeStorage(nyantracker.STORAGE_KEY_OSC_HEIGHT, String(Math.round(clampedHeight)));
+        }
+    }
+
+    private applyOscHiddenState(persist = true): void {
+        this.preferredOscHidden = true;
+        this.elements.oscView.classList.add("osc-view--hidden");
+        this.elements.oscView.style.height = "0px";
+
+        if (persist) {
+            writeStorage(nyantracker.STORAGE_KEY_OSC_HEIGHT, "0");
+        }
+    }
+
+    private isOscHidden(): boolean {
+        return this.elements.oscView.classList.contains("osc-view--hidden");
+    }
+
+    private async setBrowserOpen(nextOpen: boolean): Promise<void> {
+        if (this.browserOpen === nextOpen) {
+            return;
+        }
+
+        this.browserOpen = nextOpen;
+        writeStorage(nyantracker.STORAGE_KEY_BROWSER_OPEN, String(nextOpen));
+        this.applyBrowserVisibility();
+
+        if (nextOpen) {
+            await this.modlandBrowser.initCatalog();
+        }
+    }
+
+    private applyBrowserVisibility(): void {
+        this.root.classList.toggle("browser-hidden", !this.browserOpen);
+        this.elements.btnToggleBrowser.classList.toggle("is-active", this.browserOpen);
+        this.elements.btnToggleBrowser.setAttribute("aria-pressed", String(this.browserOpen));
+        this.elements.btnToggleBrowser.title = this.browserOpen ? "Hide song browser" : "Show song browser";
+        this.applyResponsiveLayoutState();
+        this.schedulePatternLayoutSync();
     }
 
     private async loadFile(file: File): Promise<void> {
@@ -632,6 +887,10 @@ export class nyantracker {
             return;
         }
 
+        if (this.isOscHidden()) {
+            return;
+        }
+
         for (let channel = 0; channel < this.numChannels; channel += 1) {
             const canvas = this.channelCanvases[channel];
             if (!canvas) {
@@ -985,5 +1244,28 @@ export class nyantracker {
 
         const tweakBarHidden = readStorage(nyantracker.STORAGE_KEY_TWEAKBAR_HIDDEN) === "true";
         this.elements.tweakBar.classList.toggle("tweak-bar--hidden", tweakBarHidden);
+
+        const savedBrowserWidth = readStoredNumber(nyantracker.STORAGE_KEY_BROWSER_WIDTH);
+        if (savedBrowserWidth !== null) {
+            this.preferredBrowserWidth = savedBrowserWidth;
+        }
+
+        const savedBrowserOpen = readStorage(nyantracker.STORAGE_KEY_BROWSER_OPEN);
+        if (savedBrowserOpen !== null) {
+            this.browserOpen = savedBrowserOpen !== "false";
+        }
+
+        this.applyBrowserVisibility();
+
+        const savedOscHeight = readStoredNumber(nyantracker.STORAGE_KEY_OSC_HEIGHT);
+        if (savedOscHeight !== null) {
+            if (savedOscHeight <= 0) {
+                this.preferredOscHidden = true;
+                this.preferredOscHeight = nyantracker.MIN_OSC_HEIGHT;
+            } else {
+                this.preferredOscHidden = false;
+                this.preferredOscHeight = savedOscHeight;
+            }
+        }
     }
 }

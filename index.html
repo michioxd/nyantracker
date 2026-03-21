@@ -24,9 +24,13 @@
             </div>
             <div class="song-list" id="songList"></div>
         </div>
+        <div class="resizer resize-browser"></div>
         <div class="tracker-shell" id="drop-zone">
             <header class="top-bar">
                 <div class="controls">
+                    <button id="btnToggleBrowser" title="Toggle song browser">
+                        <i class="ti ti-search"></i>
+                    </button>
                     <input type="file" id="fileInput" title="Load module file"
                         accept=".mod,.s3m,.xm,.it,.ptm,.mptm,.669,.amf,.ams,.dbm,.digi,.dmf,.dsm,.far,.mdl,.med,.mt2,.mtm,.okt,.psm,.stm,.ult,.wow"
                         disabled />
@@ -89,6 +93,7 @@
                     </div>
                     <div class="pattern-body" id="pattern-body"></div>
                 </div>
+                <div class="resizer resize-osc"></div>
                 <div class="osc-view" id="osc-view"></div>
                 <div class="status-display">
                     <span id="top-status">INITIALIZING</span>
