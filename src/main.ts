@@ -17,12 +17,19 @@ if (!appRoot) {
 }
 
 const trackerApp = new nyantracker(appRoot, {
+    searchInput: getElement<HTMLInputElement>(appRoot, "#searchInput"),
+    btnSongPrev: getElement<HTMLButtonElement>(appRoot, "#btnSongPrev"),
+    songPageInfo: getElement<HTMLElement>(appRoot, "#songPageInfo"),
+    btnSongNext: getElement<HTMLButtonElement>(appRoot, "#btnSongNext"),
+    songList: getElement<HTMLElement>(appRoot, "#songList"),
     fileInput: getElement<HTMLInputElement>(appRoot, "#fileInput"),
     fileLabel: getElement<HTMLLabelElement>(appRoot, "#fileLabel"),
     btnPrevPat: getElement<HTMLButtonElement>(appRoot, "#btnPrevPat"),
     btnPlay: getElement<HTMLButtonElement>(appRoot, "#btnPlay"),
     btnNextPat: getElement<HTMLButtonElement>(appRoot, "#btnNextPat"),
     btnStop: getElement<HTMLButtonElement>(appRoot, "#btnStop"),
+    btnShowTweaks: getElement<HTMLButtonElement>(appRoot, "#btnShowTweaks"),
+    tweakBar: getElement<HTMLElement>(appRoot, "#tweak-bar"),
     progressCurrent: getElement<HTMLElement>(appRoot, "#progress-current"),
     progressTotal: getElement<HTMLElement>(appRoot, "#progress-total"),
     progressBar: getElement<HTMLElement>(appRoot, ".progress-bar"),

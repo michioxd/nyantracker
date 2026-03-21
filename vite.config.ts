@@ -5,6 +5,7 @@ import preload from "vite-plugin-preload";
 import viteCompression from "vite-plugin-compression";
 
 const buildTime = Date.now();
+const buildDate = new Date(buildTime).toISOString();
 const gitCommit = execSync("git rev-parse --short HEAD").toString().trim();
 const gitCommitFull = execSync("git rev-parse HEAD").toString().trim();
 
@@ -18,6 +19,7 @@ export default defineConfig({
     ],
     define: {
         "import.meta.env.VITE_BUILD_TIME": JSON.stringify(buildTime),
+        "import.meta.env.VITE_BUILD_DATE": JSON.stringify(buildDate),
         "import.meta.env.VITE_GIT_COMMIT": JSON.stringify(gitCommit),
         "import.meta.env.VITE_GIT_COMMIT_FULL": JSON.stringify(gitCommitFull),
     },

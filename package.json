@@ -22,7 +22,8 @@
     },
     "dependencies": {
         "@icon/themify-icons": "^1.0.1-alpha.3",
-        "chiptune3": "^0.8.4"
+        "chiptune3": "^0.8.4",
+        "fflate": "^0.8.2"
     },
     "trustedDependencies": [
         "@parcel/watcher"

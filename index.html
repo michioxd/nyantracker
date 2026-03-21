@@ -10,27 +10,44 @@
 
 <body>
     <div id="app">
+        <div class="song-selector">
+            <header class="top-bar">
+                <strong>
+                    Module selectors from modland
+                </strong>
+            </header>
+            <input type="text" id="searchInput" placeholder="Search..." />
+            <div class="song-pagination">
+                <button type="button" id="btnSongPrev" aria-label="Previous song page">&lt;</button>
+                <small id="songPageInfo">0/0</small>
+                <button type="button" id="btnSongNext" aria-label="Next song page">&gt;</button>
+            </div>
+            <div class="song-list" id="songList"></div>
+        </div>
         <div class="tracker-shell" id="drop-zone">
             <header class="top-bar">
                 <div class="controls">
-                    <input type="file" id="fileInput"
+                    <input type="file" id="fileInput" title="Load module file"
                         accept=".mod,.s3m,.xm,.it,.ptm,.mptm,.669,.amf,.ams,.dbm,.digi,.dmf,.dsm,.far,.mdl,.med,.mt2,.mtm,.okt,.psm,.stm,.ult,.wow"
                         disabled />
                     <label for="fileInput" class="term-btn" id="fileLabel">
                         <i class="ti ti-folder"></i>
                     </label>
-                    <button id="btnPrevPat" disabled>
+                    <button id="btnPrevPat" disabled title="Previous pattern">
                         <i class="ti ti-control-skip-backward"></i>
                     </button>
-                    <button id="btnPlay" disabled>
+                    <button id="btnPlay" disabled title="Play">
                         <i class="ti ti-control-play"></i>
                         <i class="ti ti-control-pause"></i>
                     </button>
-                    <button id="btnStop" disabled>
+                    <button id="btnStop" disabled title="Stop">
                         <i class="ti ti-control-stop"></i>
                     </button>
-                    <button id="btnNextPat" disabled>
+                    <button id="btnNextPat" disabled title="Next pattern">
                         <i class="ti ti-control-skip-forward"></i>
+                    </button>
+                    <button id="btnShowTweaks" title="Show tweaks">
+                        <i class="ti ti-settings"></i>
                     </button>
                 </div>
                 <div class="progress-control">
@@ -43,11 +60,7 @@
                 </div>
             </header>
 
-            <section class="info-bar">
-                <strong id="title-display">--</strong>
-            </section>
-
-            <section class="tweak-bar">
+            <section class="tweak-bar tweak-bar--hidden" id="tweak-bar">
                 <label class="slider-control" for="volume-slider">
                     <span>Volume</span>
                     <input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.6" />
@@ -65,6 +78,10 @@
                 </label>
             </section>
 
+            <section class="info-bar">
+                <strong id="title-display">No file loaded</strong>
+            </section>
+
             <div class="main-container">
                 <div class="pattern-view">
                     <div class="pattern-header" id="pattern-header">
@@ -79,10 +96,11 @@
                     <span id="pat-display">Pattern: --/--</span>
                     <span id="row-display">Row: --/--</span>
                     <span class="space"></span>
-                    <a href="#" id="version-display">nyantracker by michioxd</a>
+                    <span id="version-display">nyantracker by michioxd</span>
                     <a href="https://github.com/michioxd/nyantracker/commit/%VITE_GIT_COMMIT_FULL%" target="_blank"
-                        id="git-hash">%VITE_GIT_COMMIT%</a>
-                    <a href="https://github.com/michioxd/nyantracker" target="_blank">github</a>
+                        id="git-hash"
+                        title="Build date: %VITE_BUILD_DATE% (%VITE_BUILD_TIME%) - Git commit hash: %VITE_GIT_COMMIT_FULL%">git.%VITE_GIT_COMMIT%</a>
+                    <a href="https://github.com/michioxd/nyantracker" target="_blank">fork me on github</a>
                 </div>
             </div>
             <div class="drop-indicator" id="drop-indicator">DROP MODULE FILE TO LOAD</div>

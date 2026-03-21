@@ -47,8 +47,162 @@ html,
 body,
 #app {
     margin: 0;
+    width: 100%;
     min-height: 100vh;
-    background: radial-gradient(circle at top, #2b2b2b 0%, var(--bg-main) 48%);
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+}
+
+.song-selector {
+    width: 350px;
+    height: 100dvh;
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    input#searchInput {
+        padding: 6px 10px;
+        border: 1px solid var(--border-color);
+        border-width: 1px 0;
+        background: var(--bg-panel);
+        color: var(--text-normal);
+
+        &::placeholder {
+            color: var(--text-muted);
+        }
+    }
+
+    .song-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 0 10px;
+
+        button {
+            appearance: none;
+            min-width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            background: var(--bg-panel);
+            color: var(--text-normal);
+            cursor: pointer;
+
+            &:hover:not(:disabled) {
+                background: var(--bg-active-row);
+            }
+
+            &:disabled {
+                opacity: 0.4;
+                cursor: not-allowed;
+            }
+        }
+
+        small {
+            min-width: 72px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+    }
+
+    .song-list {
+        width: 100%;
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+
+        .song-item {
+            appearance: none;
+            width: 100%;
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px dashed var(--border-color);
+            border-left: 0;
+            border-right: 0;
+            border-top: 0;
+            border-radius: 0;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+
+            &.active {
+                background: var(--bg-active-row);
+                border: 1px solid var(--border-color);
+                border-width: 1px 0;
+                border-top: 0;
+            }
+
+            &:hover {
+                background: var(--bg-panel);
+            }
+
+            .title {
+                display: block;
+                overflow: hidden;
+                container-type: inline-size;
+                --title-scroll-distance: min(0px, calc(100cqw - 100%));
+                font-weight: 700;
+                color: var(--term-cyan);
+                white-space: nowrap;
+
+                .title-text {
+                    display: inline-block;
+                    width: max-content;
+                    min-width: 100%;
+                    white-space: nowrap;
+                    transform: translateX(0);
+                    will-change: transform;
+                }
+            }
+
+            &:hover .title-text {
+                animation: song-title-marquee 3s linear infinite;
+            }
+
+            .bottom {
+                margin-top: 4px;
+                font-size: 12px;
+                display: flex;
+                gap: 6px;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+
+                .artist {
+                    font-weight: 700;
+                }
+
+                .info {
+                    color: var(--text-muted);
+                }
+            }
+        }
+
+        .song-list-empty {
+            padding: 12px 10px;
+            color: var(--text-muted);
+            font-size: 12px;
+            border-bottom: 1px dashed var(--border-color);
+        }
+    }
+}
+
+@keyframes song-title-marquee {
+
+    0%,
+    15%,
+    100% {
+        transform: translateX(0);
+    }
+
+    45%,
+    70% {
+        transform: translateX(var(--title-scroll-distance));
+    }
 }
 
 body {
@@ -87,9 +241,10 @@ output {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    width: 100%;
+    flex: 1;
     height: 100dvh;
     background: color-mix(in srgb, var(--bg-main) 88%, black);
-    box-shadow: var(--shadow);
     overflow: hidden;
 }
 
@@ -497,9 +652,23 @@ canvas {
     }
 }
 
+.tweak-bar {
+    &--hidden {
+        display: none;
+    }
+}
+
 @media (width <=960px) {
     #app {
         padding: 0;
+        flex-direction: column;
+    }
+
+    .song-selector {
+        width: 100%;
+        height: 260px;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
     }
 
     .tracker-shell {
