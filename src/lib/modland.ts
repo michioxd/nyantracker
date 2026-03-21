@@ -28,6 +28,8 @@ export interface ModlandLoadedModule {
     fileName: string;
 }
 
+export type ModlandFetchProgressCallback = (progressPercent: number) => void;
+
 let catalogPromise: Promise<ModlandEntry[]> | null = null;
 
 export function getPlayableExtensionList(): string[] {
@@ -140,14 +142,17 @@ export function filterModlandEntries(entries: ModlandEntry[], query: string): Mo
     });
 }
 
-export async function fetchModlandModule(entry: ModlandEntry): Promise<ModlandLoadedModule> {
+export async function fetchModlandModule(
+    entry: ModlandEntry,
+    onProgress?: ModlandFetchProgressCallback,
+): Promise<ModlandLoadedModule> {
     const requestUrl = buildModuleUrl(entry.path);
     const response = await fetch(requestUrl);
     if (!response.ok) {
         throw new Error(`Failed to fetch module (${response.status})`);
     }
 
-    const archiveBuffer = await response.arrayBuffer();
+    const archiveBuffer = await readResponseWithProgress(response, onProgress);
     if (!entry.archive) {
         return {
             buffer: archiveBuffer,
@@ -185,6 +190,57 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     return copy.buffer;
+}
+
+async function readResponseWithProgress(
+    response: Response,
+    onProgress?: ModlandFetchProgressCallback,
+): Promise<ArrayBuffer> {
+    const contentLengthHeader = response.headers.get("content-length");
+    const totalBytes = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : Number.NaN;
+    const canTrackProgress = Number.isFinite(totalBytes) && totalBytes > 0;
+
+    if (!response.body) {
+        const buffer = await response.arrayBuffer();
+        onProgress?.(100);
+        return buffer;
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let receivedBytes = 0;
+
+    if (canTrackProgress) {
+        onProgress?.(0);
+    }
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+            break;
+        }
+
+        if (!value) {
+            continue;
+        }
+
+        chunks.push(value);
+        receivedBytes += value.byteLength;
+
+        if (canTrackProgress) {
+            onProgress?.((receivedBytes / totalBytes) * 100);
+        }
+    }
+
+    const merged = new Uint8Array(receivedBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+
+    onProgress?.(100);
+    return merged.buffer;
 }
 
 function buildModuleUrl(path: string): string {

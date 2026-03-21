@@ -10,7 +10,8 @@ import {
 import { OscilloscopeRenderer } from "./components/oscilloscope";
 import { PatternView } from "./components/pattern-view";
 import { PlayerController } from "./components/player-controller";
-import { fetchModlandCatalog, fetchModlandModule, filterModlandEntries, type ModlandEntry } from "./lib/modland";
+import { ModlandBrowser } from "./features/modland-browser";
+import { readStorage, readStoredNumber, writeStorage } from "./utils/storage";
 
 interface TrackerElements {
     searchInput: HTMLInputElement;
@@ -87,19 +88,32 @@ export class nyantracker {
     private readonly oscilloscopeRenderer = new OscilloscopeRenderer();
     private readonly patternView: PatternView;
     private readonly player: PlayerController;
+    private readonly modlandBrowser: ModlandBrowser;
     private requestedPatternIndex = -1;
     private patternPrefetchScheduled = false;
-    private modlandEntries: ModlandEntry[] = [];
-    private filteredModlandEntries: ModlandEntry[] = [];
-    private activeModlandPath = "";
-    private selectedSongItem: HTMLElement | null = null;
-    private readonly modlandRenderLimit = 300;
-    private modlandPage = 0;
 
     constructor(root: HTMLElement, elements: TrackerElements) {
         this.root = root;
         this.elements = elements;
         this.patternView = new PatternView(elements.patternHeader, elements.patternBody, elements.oscView);
+        this.modlandBrowser = new ModlandBrowser(
+            {
+                searchInput: elements.searchInput,
+                btnSongPrev: elements.btnSongPrev,
+                songPageInfo: elements.songPageInfo,
+                btnSongNext: elements.btnSongNext,
+                songList: elements.songList,
+                titleDisplay: elements.titleDisplay,
+            },
+            {
+                renderLimit: 300,
+                storageKeySearch: nyantracker.STORAGE_KEY_SEARCH,
+                onStatusChange: (status) => this.updateStatus(status),
+                onLoadModule: async (_entry, buffer, fileName) => {
+                    await this.loadArrayBuffer(buffer, fileName);
+                },
+            },
+        );
         this.player = new PlayerController(
             {
                 onReady: () => {
@@ -120,15 +134,15 @@ export class nyantracker {
 
     async init(): Promise<void> {
         this.restorePersistedState();
+        this.modlandBrowser.restorePersistedState();
         this.bindEvents();
         this.updateSliderOutputs();
-        this.updateSongPagination(0, 0);
 
         try {
             this.legacyModule = await loadLegacyOpenMpt();
             this.elements.fileInput.disabled = false;
             this.updateStatus("IDLE");
-            void this.initModlandCatalog();
+            void this.modlandBrowser.initCatalog();
         } catch (e) {
             console.error("Failed to load legacy OpenMPT module:", e);
             this.updateStatus("INITIALIZATION FAILED");
@@ -144,30 +158,7 @@ export class nyantracker {
             }
             await this.loadFile(file);
         });
-
-        this.elements.searchInput.addEventListener("input", () => {
-            this.writeStorage(nyantracker.STORAGE_KEY_SEARCH, this.elements.searchInput.value);
-            this.applySongFilter();
-        });
-
-        this.elements.btnSongPrev.addEventListener("click", () => {
-            if (this.modlandPage <= 0) {
-                return;
-            }
-
-            this.modlandPage -= 1;
-            this.renderSongList();
-        });
-
-        this.elements.btnSongNext.addEventListener("click", () => {
-            const totalPages = this.getModlandTotalPages();
-            if (this.modlandPage >= totalPages - 1) {
-                return;
-            }
-
-            this.modlandPage += 1;
-            this.renderSongList();
-        });
+        this.modlandBrowser.bindEvents();
 
         this.elements.btnPlay.addEventListener("click", () => {
             const paused = this.player.togglePlayback();
@@ -189,7 +180,7 @@ export class nyantracker {
 
         this.elements.btnShowTweaks.addEventListener("click", () => {
             const isHidden = this.elements.tweakBar.classList.toggle("tweak-bar--hidden");
-            this.writeStorage(nyantracker.STORAGE_KEY_TWEAKBAR_HIDDEN, String(isHidden));
+            writeStorage(nyantracker.STORAGE_KEY_TWEAKBAR_HIDDEN, String(isHidden));
         });
 
         this.elements.progressBar.addEventListener("pointerdown", (event) => {
@@ -228,7 +219,7 @@ export class nyantracker {
             const value = Number(this.elements.volumeSlider.value);
             this.player.setVolume(value);
             this.elements.volumeOutput.value = `${Math.round(value * 100)}%`;
-            this.writeStorage(nyantracker.STORAGE_KEY_VOLUME, String(value));
+            writeStorage(nyantracker.STORAGE_KEY_VOLUME, String(value));
         });
 
         this.elements.pitchSlider.addEventListener("input", () => {
@@ -287,7 +278,7 @@ export class nyantracker {
 
         this.player.ensure();
         this.player.setVolume(Number(this.elements.volumeSlider.value));
-        this.setActiveSong(file.name);
+        this.modlandBrowser.setActiveSong(file.name);
         this.currentFileName = file.name;
         this.updateStatus("PARSING MODULE...");
 
@@ -911,106 +902,6 @@ export class nyantracker {
         this.elements.topStatus.textContent = status;
     }
 
-    private async initModlandCatalog(): Promise<void> {
-        this.updateSongPagination(0, 0, "Loading...");
-
-        try {
-            const entries = await fetchModlandCatalog();
-            this.modlandEntries = entries;
-            this.applySongFilter();
-            this.updateStatus("IDLE");
-        } catch (error) {
-            console.error("Failed to load Modland catalog:", error);
-            this.updateSongPagination(0, 0, "Unavailable");
-            this.updateStatus("MODLAND CATALOG FAILED");
-        }
-    }
-
-    private applySongFilter(): void {
-        this.filteredModlandEntries = filterModlandEntries(this.modlandEntries, this.elements.searchInput.value);
-        this.modlandPage = 0;
-        this.renderSongList();
-    }
-
-    private renderSongList(): void {
-        this.elements.songList.replaceChildren();
-
-        const totalPages = this.getModlandTotalPages();
-        if (totalPages === 0) {
-            this.modlandPage = 0;
-        } else if (this.modlandPage > totalPages - 1) {
-            this.modlandPage = totalPages - 1;
-        }
-
-        const pageStart = this.modlandPage * this.modlandRenderLimit;
-        const entriesToRender = this.filteredModlandEntries.slice(pageStart, pageStart + this.modlandRenderLimit);
-        const fragment = document.createDocumentFragment();
-
-        for (const entry of entriesToRender) {
-            const item = document.createElement("button");
-            item.type = "button";
-            item.className = "song-item";
-            item.dataset.path = entry.path;
-            if (entry.path === this.activeModlandPath) {
-                item.classList.add("active");
-                this.selectedSongItem = item;
-            }
-
-            const title = document.createElement("span");
-            title.className = "title";
-
-            const titleText = document.createElement("span");
-            titleText.className = "title-text";
-            titleText.textContent = entry.title || entry.archiveEntryName;
-            title.appendChild(titleText);
-
-            const bottom = document.createElement("div");
-            bottom.className = "bottom";
-
-            const artist = document.createElement("span");
-            artist.className = "artist";
-            artist.textContent = entry.artist || "Unknown";
-
-            const info = document.createElement("span");
-            info.className = "info";
-            info.textContent = `${entry.tracker} · ${entry.ext.toUpperCase()} · ${entry.sizeKb.toFixed(1)}KB`;
-
-            bottom.append(artist, info);
-            item.append(title, bottom);
-            item.addEventListener("click", () => {
-                void this.loadModlandEntry(entry);
-            });
-            fragment.appendChild(item);
-        }
-
-        if (entriesToRender.length === 0) {
-            const empty = document.createElement("div");
-            empty.className = "song-list-empty";
-            empty.textContent =
-                this.modlandEntries.length === 0 ? "No songs loaded yet." : "No matching playable songs.";
-            fragment.appendChild(empty);
-            this.selectedSongItem = null;
-        }
-
-        this.elements.songList.appendChild(fragment);
-        this.updateSongPagination(entriesToRender.length, this.filteredModlandEntries.length);
-    }
-
-    private async loadModlandEntry(entry: ModlandEntry): Promise<void> {
-        this.setActiveSong(entry.path);
-        this.currentFileName = entry.archiveEntryName;
-        this.elements.titleDisplay.textContent = `${entry.artist} - ${entry.title}`;
-        this.updateStatus("FETCHING MODULE...");
-
-        try {
-            const module = await fetchModlandModule(entry);
-            await this.loadArrayBuffer(module.buffer, module.fileName);
-        } catch (error) {
-            console.error("Failed to load Modland module:", error);
-            this.updateStatus("MODULE LOAD FAILED");
-        }
-    }
-
     private async loadArrayBuffer(buffer: ArrayBuffer, fileName: string): Promise<void> {
         if (!this.legacyModule) {
             this.updateStatus("LEGACY ENGINE NOT READY");
@@ -1034,49 +925,8 @@ export class nyantracker {
         }
     }
 
-    private updateSongPagination(visibleCount: number, totalCount: number, label?: string): void {
-        if (label) {
-            this.elements.songPageInfo.textContent = label;
-        } else if (totalCount <= 0 || visibleCount <= 0) {
-            this.elements.songPageInfo.textContent = `0/${totalCount}`;
-        } else {
-            const start = this.modlandPage * this.modlandRenderLimit + 1;
-            const end = start + visibleCount - 1;
-            this.elements.songPageInfo.textContent = `${start}-${end}/${totalCount}`;
-        }
-
-        const totalPages = Math.max(1, this.getModlandTotalPages(totalCount));
-        const hasEntries = totalCount > 0;
-        this.elements.btnSongPrev.disabled = !hasEntries || this.modlandPage <= 0;
-        this.elements.btnSongNext.disabled = !hasEntries || this.modlandPage >= totalPages - 1;
-    }
-
-    private getModlandTotalPages(totalCount = this.filteredModlandEntries.length): number {
-        if (totalCount <= 0) {
-            return 0;
-        }
-
-        return Math.ceil(totalCount / this.modlandRenderLimit);
-    }
-
-    private setActiveSong(pathOrFileName: string): void {
-        this.activeModlandPath = pathOrFileName;
-        if (this.selectedSongItem) {
-            this.selectedSongItem.classList.remove("active");
-            this.selectedSongItem = null;
-        }
-
-        const next = this.elements.songList.querySelector<HTMLElement>(
-            `.song-item[data-path="${cssEscape(pathOrFileName)}"]`,
-        );
-        if (next) {
-            next.classList.add("active");
-            this.selectedSongItem = next;
-        }
-    }
-
     private restorePersistedState(): void {
-        const savedVolume = this.readStoredNumber(nyantracker.STORAGE_KEY_VOLUME);
+        const savedVolume = readStoredNumber(nyantracker.STORAGE_KEY_VOLUME);
         if (savedVolume !== null) {
             const min = Number(this.elements.volumeSlider.min || 0);
             const max = Number(this.elements.volumeSlider.max || 1);
@@ -1084,44 +934,7 @@ export class nyantracker {
             this.elements.volumeSlider.value = String(clampedVolume);
         }
 
-        const tweakBarHidden = this.readStorage(nyantracker.STORAGE_KEY_TWEAKBAR_HIDDEN) === "true";
+        const tweakBarHidden = readStorage(nyantracker.STORAGE_KEY_TWEAKBAR_HIDDEN) === "true";
         this.elements.tweakBar.classList.toggle("tweak-bar--hidden", tweakBarHidden);
-
-        const savedSearch = this.readStorage(nyantracker.STORAGE_KEY_SEARCH);
-        if (savedSearch !== null) {
-            this.elements.searchInput.value = savedSearch;
-        }
     }
-
-    private readStoredNumber(key: string): number | null {
-        const value = this.readStorage(key);
-        if (value === null) {
-            return null;
-        }
-
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : null;
-    }
-
-    private readStorage(key: string): string | null {
-        try {
-            return window.localStorage.getItem(key);
-        } catch {
-            return null;
-        }
-    }
-
-    private writeStorage(key: string, value: string): void {
-        try {
-            window.localStorage.setItem(key, value);
-        } catch {}
-    }
-}
-
-function cssEscape(value: string): string {
-    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-        return CSS.escape(value);
-    }
-
-    return value.replace(/(["\\#.:\[\]>+~*^$|=\s])/g, "\\$1");
 }
