@@ -329,9 +329,11 @@ input[type="range"] {
 .vu-bg {
     position: absolute;
     inset: 0 0 auto;
-    height: 3px;
+    height: 100%;
     background: var(--bg-panel);
     border-bottom: 1px solid #222;
+    z-index: 0;
+    opacity: 0.4;
 }
 
 .vu-gradient {
@@ -339,12 +341,14 @@ input[type="range"] {
     inset: 0;
     background: linear-gradient(to right, var(--term-green), var(--color-inst), var(--term-red));
     clip-path: inset(0 100% 0 0);
-    transition: clip-path 0.05s linear;
+    transition: clip-path 0.01s linear;
 }
 
 .ch-text {
-    margin-top: 4px;
+    position: relative;
     font-weight: 700;
+    z-index: 3;
+    text-shadow: 0 0 4px rgb(0 0 0 / 80%);
 }
 
 .pattern-body {

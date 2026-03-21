@@ -3,6 +3,7 @@ import type { PatternCell } from "./formatters";
 export class PatternView {
     private currentPattern = -1;
     private currentRow = -1;
+    private pendingHighlightedRow = -1;
     private activeRowElement: HTMLElement | null = null;
     private readonly header: HTMLElement;
     private readonly body: HTMLElement;
@@ -57,6 +58,7 @@ export class PatternView {
     renderPattern(patternIndex: number, rows: PatternCell[][]): void {
         this.currentPattern = patternIndex;
         this.currentRow = -1;
+        this.pendingHighlightedRow = -1;
         this.activeRowElement = null;
 
         const htmlParts: string[] = [];
@@ -85,6 +87,12 @@ export class PatternView {
         requestAnimationFrame(() => {
             this.body.innerHTML = htmlParts.join("");
             this.updatePadding();
+
+            if (this.pendingHighlightedRow >= 0) {
+                const rowToHighlight = this.pendingHighlightedRow;
+                this.pendingHighlightedRow = -1;
+                this.highlightRow(rowToHighlight);
+            }
         });
     }
 
@@ -100,10 +108,13 @@ export class PatternView {
 
         const activeRow = this.body.children[row + 1] as HTMLElement;
         if (!activeRow || !activeRow.classList.contains("pattern-row")) {
+            this.pendingHighlightedRow = row;
+            this.currentRow = -1;
             this.activeRowElement = null;
             return;
         }
 
+        this.pendingHighlightedRow = -1;
         activeRow.classList.add("active");
         this.activeRowElement = activeRow;
 
@@ -133,6 +144,7 @@ export class PatternView {
         }
 
         this.currentRow = -1;
+        this.pendingHighlightedRow = -1;
         this.activeRowElement = null;
         this.body.scrollTop = 0;
     }

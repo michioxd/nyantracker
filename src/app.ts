@@ -64,6 +64,8 @@ export class nyantracker {
     private lastProgressCurrentLabel = "";
     private lastProgressTotalLabel = "";
     private patternCache = new Map<number, PatternCell[][]>();
+    private readonly patternPrefetchQueue: number[] = [];
+    private readonly patternPrefetchInFlight = new Set<number>();
     private readonly orderStartSeconds = new Map<number, number>();
     private readonly patternRowCounts = new Map<number, number>();
     private readonly channelFreqs = new Float32Array(this.maxChannels);
@@ -73,6 +75,8 @@ export class nyantracker {
     private readonly oscilloscopeRenderer = new OscilloscopeRenderer();
     private readonly patternView: PatternView;
     private readonly player: PlayerController;
+    private requestedPatternIndex = -1;
+    private patternPrefetchScheduled = false;
 
     constructor(root: HTMLElement, elements: TrackerElements) {
         this.root = root;
@@ -294,6 +298,10 @@ export class nyantracker {
         }
 
         this.patternCache.clear();
+        this.patternPrefetchQueue.length = 0;
+        this.patternPrefetchInFlight.clear();
+        this.patternPrefetchScheduled = false;
+        this.requestedPatternIndex = -1;
         this.orderStartSeconds.clear();
         this.patternRowCounts.clear();
         this.currentRow = -1;
@@ -306,6 +314,10 @@ export class nyantracker {
         this.elements.btnPrevPat.disabled = false;
         this.elements.btnNextPat.disabled = false;
         this.elements.btnStop.disabled = false;
+
+        this.patternCachePattern(0);
+        this.enqueuePatternPrefetch(1);
+        this.schedulePatternPrefetch();
     }
 
     private handleMetadata(metadata: ChiptuneMetadata): void {
@@ -320,6 +332,18 @@ export class nyantracker {
 
     private handleProgress(progress: ChiptuneProgress): void {
         this.updateProgressUi(progress.pos, this.durationSeconds || this.player.instance?.duration || 0);
+
+        if (progress.pattern >= 0 && progress.pattern !== this.patternView.getCurrentPattern()) {
+            this.renderPatternByIndex(progress.pattern);
+            this.enqueuePatternPrefetch(progress.pattern + 1);
+            this.enqueuePatternPrefetch(progress.pattern + 2);
+            this.schedulePatternPrefetch();
+        }
+
+        if (progress.row >= 0) {
+            this.currentRow = progress.row;
+            this.patternView.highlightRow(progress.row);
+        }
     }
 
     private updateUiLoop(): void {
@@ -367,13 +391,7 @@ export class nyantracker {
             } catch {}
 
             if (pat >= 0 && pat !== this.patternView.getCurrentPattern()) {
-                if (!this.patternCache.has(pat)) {
-                    this.patternCachePattern(pat);
-                } else {
-                    requestAnimationFrame(() => {
-                        this.patternView.renderPattern(pat, this.patternCache.get(pat)!);
-                    });
-                }
+                this.renderPatternByIndex(pat);
             }
 
             if (row >= 0 && row !== this.currentRow) {
@@ -395,12 +413,57 @@ export class nyantracker {
     }
 
     private patternCachePattern(patternIndex: number): void {
-        if (!this.legacyModule || !this.uiModulePtr) {
+        const rows = this.ensurePatternCached(patternIndex);
+        if (rows.length === 0) {
             return;
+        }
+
+        this.patternView.renderPattern(patternIndex, rows);
+    }
+
+    private renderPatternByIndex(patternIndex: number): void {
+        if (patternIndex < 0 || patternIndex >= this.getTotalPatterns()) {
+            return;
+        }
+
+        this.requestedPatternIndex = patternIndex;
+
+        if (this.patternCache.has(patternIndex)) {
+            this.patternView.renderPattern(patternIndex, this.patternCache.get(patternIndex)!);
+            return;
+        }
+
+        const rows = this.ensurePatternCached(patternIndex);
+        if (rows.length === 0 || this.requestedPatternIndex !== patternIndex) {
+            return;
+        }
+
+        this.patternView.renderPattern(patternIndex, rows);
+    }
+
+    private ensurePatternCached(patternIndex: number): PatternCell[][] {
+        if (!this.legacyModule || !this.uiModulePtr || patternIndex < 0 || patternIndex >= this.getTotalPatterns()) {
+            return [];
+        }
+
+        const cachedPattern = this.patternCache.get(patternIndex);
+        if (cachedPattern) {
+            return cachedPattern;
+        }
+
+        const rows = this.buildPatternRows(patternIndex);
+        this.patternCache.set(patternIndex, rows);
+        return rows;
+    }
+
+    private buildPatternRows(patternIndex: number): PatternCell[][] {
+        if (!this.legacyModule || !this.uiModulePtr) {
+            return [];
         }
 
         const totalRows = this.legacyModule._openmpt_module_get_pattern_num_rows(this.uiModulePtr, patternIndex);
         this.patternRowCounts.set(patternIndex, totalRows);
+
         const rows: PatternCell[][] = [];
         for (let row = 0; row < totalRows; row += 1) {
             const rowCells: PatternCell[] = [];
@@ -410,11 +473,64 @@ export class nyantracker {
             rows.push(rowCells);
         }
 
-        this.patternCache.set(patternIndex, rows);
+        return rows;
+    }
 
-        requestAnimationFrame(() => {
-            this.patternView.renderPattern(patternIndex, rows);
+    private enqueuePatternPrefetch(patternIndex: number): void {
+        if (!this.legacyModule || !this.uiModulePtr) {
+            return;
+        }
+
+        if (
+            patternIndex < 0 ||
+            patternIndex >= this.getTotalPatterns() ||
+            this.patternCache.has(patternIndex) ||
+            this.patternPrefetchInFlight.has(patternIndex) ||
+            this.patternPrefetchQueue.includes(patternIndex)
+        ) {
+            return;
+        }
+
+        this.patternPrefetchQueue.push(patternIndex);
+    }
+
+    private schedulePatternPrefetch(): void {
+        if (this.patternPrefetchScheduled || this.patternPrefetchQueue.length === 0) {
+            return;
+        }
+
+        this.patternPrefetchScheduled = true;
+        window.setTimeout(() => {
+            void this.processPatternPrefetchQueue();
+        }, 0);
+    }
+
+    private async processPatternPrefetchQueue(): Promise<void> {
+        const nextPatternIndex = this.patternPrefetchQueue.shift();
+        if (nextPatternIndex === undefined) {
+            this.patternPrefetchScheduled = false;
+            return;
+        }
+
+        this.patternPrefetchInFlight.add(nextPatternIndex);
+        await new Promise<void>((resolve) => {
+            window.setTimeout(() => {
+                if (!this.patternCache.has(nextPatternIndex)) {
+                    const rows = this.buildPatternRows(nextPatternIndex);
+                    if (rows.length > 0) {
+                        this.patternCache.set(nextPatternIndex, rows);
+                    }
+                }
+
+                this.patternPrefetchInFlight.delete(nextPatternIndex);
+                resolve();
+            }, 0);
         });
+
+        this.patternPrefetchScheduled = false;
+        if (this.patternPrefetchQueue.length > 0) {
+            this.schedulePatternPrefetch();
+        }
     }
 
     private hydrateChannelState(patternIndex: number, rowIndex: number): void {
