@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <title>nyantracker</title>
+      <script type="module" crossorigin src="/assets/index-Dg4Gx3Ks.js"></script>
+      <link rel="stylesheet" crossorigin href="/assets/index-P2F7bbWV.css">
+    </head>
+
+    <body>
+        <div id="app">
+            <div class="tracker-shell" id="drop-zone">
+                <header class="top-bar">
+                    <div class="controls">
+                        <input
+                            type="file"
+                            id="fileInput"
+                            accept=".mod,.s3m,.xm,.it,.ptm,.mptm,.669,.amf,.ams,.dbm,.digi,.dmf,.dsm,.far,.mdl,.med,.mt2,.mtm,.okt,.psm,.stm,.ult,.wow"
+                            disabled
+                        />
+                        <label for="fileInput" class="term-btn" id="fileLabel">
+                            <i class="ti ti-folder"></i>
+                        </label>
+                        <button id="btnPrevPat" disabled>
+                            <i class="ti ti-control-skip-backward"></i>
+                        </button>
+                        <button id="btnPlay" disabled>
+                            <i class="ti ti-control-play"></i>
+                            <i class="ti ti-control-pause"></i>
+                        </button>
+                        <button id="btnStop" disabled>
+                            <i class="ti ti-control-stop"></i>
+                        </button>
+                        <button id="btnNextPat" disabled>
+                            <i class="ti ti-control-skip-forward"></i>
+                        </button>
+                    </div>
+                    <div class="progress-control">
+                        <span id="progress-current">--:--</span>
+                        <div class="progress-bar">
+                            <div class="progress-handler"></div>
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <span id="progress-total">--:--</span>
+                    </div>
+                </header>
+
+                <section class="info-bar">
+                    <strong id="title-display">--</strong>
+                </section>
+
+                <section class="tweak-bar">
+                    <label class="slider-control" for="volume-slider">
+                        <span>Volume</span>
+                        <input id="volume-slider" type="range" min="0" max="1" step="0.01" value="0.6" />
+                        <output id="volume-output">60%</output>
+                    </label>
+                    <label class="slider-control" for="pitch-slider">
+                        <span>Pitch</span>
+                        <input id="pitch-slider" type="range" min="0.25" max="2" step="0.01" value="1" />
+                        <output id="pitch-output">1.00x</output>
+                    </label>
+                    <label class="slider-control" for="tempo-slider">
+                        <span>Tempo</span>
+                        <input id="tempo-slider" type="range" min="0.25" max="2" step="0.01" value="1" />
+                        <output id="tempo-output">1.00x</output>
+                    </label>
+                </section>
+
+                <div class="main-container">
+                    <div class="pattern-view">
+                        <div class="pattern-header" id="pattern-header">
+                            <div class="row-number-header"></div>
+                        </div>
+                        <div class="pattern-body" id="pattern-body"></div>
+                    </div>
+                    <div class="osc-view" id="osc-view"></div>
+                    <div class="status-display">
+                        <span id="top-status">INITIALIZING</span>
+                        <span id="pos-display">Position: --/--</span>
+                        <span id="pat-display">Pattern: --/--</span>
+                        <span id="row-display">Row: --/--</span>
+                        <span class="space"></span>
+                        <a href="#" id="version-display">nyantracker v0.1 by michioxd</a>
+                        <a href="https://github.com/michioxd/nyantracker" target="_blank">github</a>
+                    </div>
+                </div>
+                <div class="drop-indicator" id="drop-indicator">DROP MODULE FILE TO LOAD</div>
+            </div>
+        </div>
+    </body>
+</html>
