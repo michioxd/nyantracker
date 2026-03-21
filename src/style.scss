@@ -117,7 +117,7 @@ output {
     align-items: center;
     gap: 10px;
 
-    > span {
+    >span {
         min-width: 44px;
         color: var(--term-cyan);
         font-variant-numeric: tabular-nums;
@@ -210,7 +210,7 @@ output {
 input[type="file"] {
     display: none;
 
-    &:disabled + #fileLabel {
+    &:disabled+#fileLabel {
         border-color: #444;
         color: #444;
         cursor: not-allowed;
@@ -485,11 +485,15 @@ canvas {
     letter-spacing: 0.2em;
     pointer-events: none;
     transition: all 0.2s ease;
+    opacity: 0;
+    visibility: hidden;
 
     &--active {
         border-color: var(--term-green);
         background: rgb(0 0 0 / 72%);
         color: var(--term-green);
+        opacity: 1;
+        visibility: visible;
     }
 }
 
