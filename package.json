@@ -15,7 +15,10 @@
         "sass": "^1.98.0",
         "terser": "^5.46.1",
         "typescript": "~5.9.3",
-        "vite": "^8.0.1"
+        "vite": "^8.0.1",
+        "vite-plugin-compression": "^0.5.1",
+        "vite-plugin-minify": "^2.1.0",
+        "vite-plugin-preload": "^0.4.4"
     },
     "dependencies": {
         "@icon/themify-icons": "^1.0.1-alpha.3",
