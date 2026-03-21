@@ -59,7 +59,52 @@ export class PatternView {
         this.currentPattern = patternIndex;
         this.currentRow = -1;
         this.pendingHighlightedRow = -1;
-        this.activeRowElement = null;
+
+        if (this.activeRowElement) {
+            this.activeRowElement.classList.remove("active");
+            this.activeRowElement = null;
+        }
+
+        const existingRows = this.body.querySelectorAll(".pattern-row");
+
+        if (existingRows.length === rows.length && existingRows.length > 0) {
+            requestAnimationFrame(() => {
+                for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+                    const rowData = rows[rowIndex];
+                    const rowDiv = existingRows[rowIndex];
+                    for (let colIndex = 0; colIndex < rowData.length; colIndex++) {
+                        const cell = rowData[colIndex];
+                        const channelDiv = rowDiv.children[colIndex + 1];
+                        if (!channelDiv) continue;
+
+                        const spans = channelDiv.children;
+                        const noteClass =
+                            cell.note !== "---" && cell.note !== "===" && cell.note !== "^^^" ? "nt" : "em";
+                        const instClass = cell.inst !== "--" ? "in" : "em";
+                        const effectClass = cell.eff !== "..." ? "ef" : "em";
+
+                        if (spans[0].textContent !== cell.note) {
+                            spans[0].textContent = cell.note;
+                            spans[0].className = noteClass;
+                        }
+                        if (spans[1].textContent !== cell.inst) {
+                            spans[1].textContent = cell.inst;
+                            spans[1].className = instClass;
+                        }
+                        if (spans[2].textContent !== cell.eff) {
+                            spans[2].textContent = cell.eff;
+                            spans[2].className = effectClass;
+                        }
+                    }
+                }
+                if (this.pendingHighlightedRow >= 0) {
+                    const rowToHighlight = this.pendingHighlightedRow;
+                    this.pendingHighlightedRow = -1;
+                    this.highlightRow(rowToHighlight);
+                }
+            });
+            return;
+        }
 
         const htmlParts: string[] = [];
         htmlParts.push('<div id="top-spacer"></div>');

@@ -44,7 +44,7 @@ interface TrackerElements {
 export class nyantracker {
     private static readonly SAMPLE_RATE = 48000;
     private static readonly READ_CHUNK_SIZE = 4096;
-    private static readonly MAX_UI_DELTA_SECONDS = 0.1;
+    private fractionalFrames = 0;
     private readonly root: HTMLElement;
     private readonly elements: TrackerElements;
     private legacyModule: LegacyOpenMptModule | null = null;
@@ -333,17 +333,21 @@ export class nyantracker {
     private handleProgress(progress: ChiptuneProgress): void {
         this.updateProgressUi(progress.pos, this.durationSeconds || this.player.instance?.duration || 0);
 
-        if (progress.pattern >= 0 && progress.pattern !== this.patternView.getCurrentPattern()) {
-            this.renderPatternByIndex(progress.pattern);
-            this.enqueuePatternPrefetch(progress.pattern + 1);
-            this.enqueuePatternPrefetch(progress.pattern + 2);
-            this.schedulePatternPrefetch();
+        if (this.legacyModule && this.uiModulePtr) {
+            const shadowPos = this.legacyModule._openmpt_module_get_position_seconds(this.uiModulePtr);
+            if (Math.abs(shadowPos - progress.pos) > 0.05) {
+                this.legacyModule.ccall(
+                    "openmpt_module_set_position_seconds",
+                    "number",
+                    ["number", "number"],
+                    [this.uiModulePtr, progress.pos],
+                );
+            }
         }
 
-        if (progress.row >= 0) {
-            this.currentRow = progress.row;
-            this.patternView.highlightRow(progress.row);
-        }
+        this.enqueuePatternPrefetch(progress.pattern + 1);
+        this.enqueuePatternPrefetch(progress.pattern + 2);
+        this.schedulePatternPrefetch();
     }
 
     private updateUiLoop(): void {
@@ -360,12 +364,25 @@ export class nyantracker {
 
         if (!this.player.isPaused) {
             const now = performance.now();
-            const deltaSeconds = Math.min(
-                nyantracker.MAX_UI_DELTA_SECONDS,
-                Math.max(0, (now - this.lastFrameTime) / 1000),
-            );
+            let deltaSeconds = Math.max(0, (now - this.lastFrameTime) / 1000);
             this.lastFrameTime = now;
-            const frames = Math.floor(deltaSeconds * nyantracker.SAMPLE_RATE);
+
+            if (deltaSeconds > 0.25) {
+                const currentSec = this.legacyModule._openmpt_module_get_position_seconds(this.uiModulePtr);
+                this.legacyModule.ccall(
+                    "openmpt_module_set_position_seconds",
+                    "number",
+                    ["number", "number"],
+                    [this.uiModulePtr, currentSec + deltaSeconds],
+                );
+                deltaSeconds = 0;
+                this.fractionalFrames = 0;
+            }
+
+            const totalFrames = deltaSeconds * nyantracker.SAMPLE_RATE + this.fractionalFrames;
+            const frames = Math.floor(totalFrames);
+            this.fractionalFrames = totalFrames - frames;
+
             if (frames > 0) {
                 let remainingFrames = frames;
                 while (remainingFrames > 0) {
