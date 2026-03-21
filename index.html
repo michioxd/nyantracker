@@ -8,36 +8,58 @@
     <script
       type="module"
       crossorigin=""
-      src="/assets/index-C-kd8gnj.js"
+      src="/assets/index-CTvZBA8x.js"
     ></script>
-    <link rel="stylesheet" crossorigin="" href="/assets/style-BSAzDmV9.css" />
+    <link rel="stylesheet" crossorigin="" href="/assets/style-Bjh2FIG7.css" />
   </head>
   <body>
     <div id="app">
+      <div class="song-selector">
+        <header class="top-bar"><strong>Modland browser</strong></header>
+        <input type="text" id="searchInput" placeholder="Search..." />
+        <div class="song-pagination">
+          <button
+            type="button"
+            id="btnSongPrev"
+            aria-label="Previous song page"
+          >
+            &lt;
+          </button>
+          <small id="songPageInfo">0/0</small>
+          <button type="button" id="btnSongNext" aria-label="Next song page">
+            &gt;
+          </button>
+        </div>
+        <div class="song-list" id="songList"></div>
+      </div>
       <div class="tracker-shell" id="drop-zone">
         <header class="top-bar">
           <div class="controls">
             <input
               type="file"
               id="fileInput"
+              title="Load module file"
               accept=".mod,.s3m,.xm,.it,.ptm,.mptm,.669,.amf,.ams,.dbm,.digi,.dmf,.dsm,.far,.mdl,.med,.mt2,.mtm,.okt,.psm,.stm,.ult,.wow"
               disabled=""
             />
             <label for="fileInput" class="term-btn" id="fileLabel"
               ><i class="ti ti-folder"></i
             ></label>
-            <button id="btnPrevPat" disabled="">
+            <button id="btnPrevPat" disabled="" title="Previous pattern">
               <i class="ti ti-control-skip-backward"></i>
             </button>
-            <button id="btnPlay" disabled="">
+            <button id="btnPlay" disabled="" title="Play">
               <i class="ti ti-control-play"></i>
               <i class="ti ti-control-pause"></i>
             </button>
-            <button id="btnStop" disabled="">
+            <button id="btnStop" disabled="" title="Stop">
               <i class="ti ti-control-stop"></i>
             </button>
-            <button id="btnNextPat" disabled="">
+            <button id="btnNextPat" disabled="" title="Next pattern">
               <i class="ti ti-control-skip-forward"></i>
+            </button>
+            <button id="btnShowTweaks" title="Show tweaks">
+              <i class="ti ti-settings"></i>
             </button>
           </div>
           <div class="progress-control">
@@ -49,10 +71,7 @@
             <span id="progress-total">--:--</span>
           </div>
         </header>
-        <section class="info-bar">
-          <strong id="title-display">--</strong>
-        </section>
-        <section class="tweak-bar">
+        <section class="tweak-bar tweak-bar--hidden" id="tweak-bar">
           <label class="slider-control" for="volume-slider"
             ><span>Volume</span>
             <input
@@ -87,6 +106,9 @@
             /><output id="tempo-output">1.00x</output></label
           >
         </section>
+        <section class="info-bar">
+          <strong id="title-display">No file loaded</strong>
+        </section>
         <div class="main-container">
           <div class="pattern-view">
             <div class="pattern-header" id="pattern-header">
@@ -100,15 +122,16 @@
             <span id="pos-display">Position: --/--</span>
             <span id="pat-display">Pattern: --/--</span>
             <span id="row-display">Row: --/--</span> <span class="space"></span>
-            <a href="#" id="version-display">nyantracker by michioxd</a>
+            <span id="version-display">nyantracker by michioxd</span>
             <a
-              href="https://github.com/michioxd/nyantracker/commit/15c72648d749b6cccd2c4fd9b64ddef9cd3bef29"
+              href="https://github.com/michioxd/nyantracker/commit/e8b572e975c1d22995b80d2a524b6d1780b5e979"
               target="_blank"
               id="git-hash"
-              >15c7264</a
+              title="Build date: 2026-03-21T13:05:35.012Z (1774098335012) - Git commit hash: e8b572e975c1d22995b80d2a524b6d1780b5e979"
+              >git.e8b572e</a
             >
             <a href="https://github.com/michioxd/nyantracker" target="_blank"
-              >github</a
+              >fork me on github</a
             >
           </div>
         </div>
