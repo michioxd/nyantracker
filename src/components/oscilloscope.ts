@@ -4,6 +4,8 @@ export class OscilloscopeRenderer {
     private readonly smoothedFrequencies = new Float32Array(64);
     private readonly smoothedWaveVariants = new Uint8Array(64);
     private readonly contexts = new WeakMap<HTMLCanvasElement, CanvasRenderingContext2D>();
+    private readonly bufferLength = 1024;
+    private readonly dataArray = new Uint8Array(1024);
 
     render(
         canvas: HTMLCanvasElement,
@@ -14,7 +16,7 @@ export class OscilloscopeRenderer {
     ): void {
         let context = this.contexts.get(canvas);
         if (!context) {
-            context = canvas.getContext("2d") ?? undefined;
+            context = canvas.getContext("2d", { alpha: false }) ?? undefined;
             if (context) {
                 this.contexts.set(canvas, context);
             }
@@ -38,16 +40,16 @@ export class OscilloscopeRenderer {
         context.lineWidth = 1.5;
 
         const centerY = canvas.height / 2;
+        const phaseIndex = channelIndex % this.phases.length;
+
         if (volume <= 0.01) {
-            this.smoothedVolumes[channelIndex % this.smoothedVolumes.length] = 0;
+            this.smoothedVolumes[phaseIndex] = 0;
             context.moveTo(0, centerY);
             context.lineTo(canvas.width, centerY);
             context.stroke();
             return;
         }
 
-        const step = 2;
-        const phaseIndex = channelIndex % this.phases.length;
         const inputFrequency = frequency > 0 ? frequency : this.smoothedFrequencies[phaseIndex] || 220;
         const previousFrequency = this.smoothedFrequencies[phaseIndex] || inputFrequency;
         const normalizedFrequency = previousFrequency + (inputFrequency - previousFrequency) * 0.3;
@@ -67,10 +69,10 @@ export class OscilloscopeRenderer {
         this.phases[phaseIndex] -= normalizedFrequency * 0.0005;
         const phase = this.phases[phaseIndex];
 
-        for (let x = 0; x <= canvas.width; x += step) {
-            const t = x * visualFrequency + phase;
-
+        for (let i = 0; i < this.bufferLength; i++) {
+            const t = i * visualFrequency + phase;
             let wave = 0;
+
             switch (waveVariant) {
                 case 0:
                     wave = Math.sin(t);
@@ -92,15 +94,27 @@ export class OscilloscopeRenderer {
             }
             wave = wave * 0.6 + noise;
 
-            const y = centerY + wave * smoothedVolume * canvas.height * 0.4;
+            const byteValue = 128 + wave * smoothedVolume * 127;
+            this.dataArray[i] = Math.max(0, Math.min(255, byteValue));
+        }
 
-            if (x === 0) {
+        const sliceWidth = (canvas.width * 1.0) / this.bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < this.bufferLength; i++) {
+            const v = this.dataArray[i] / 128.0;
+            const y = (v * canvas.height) / 2;
+
+            if (i === 0) {
                 context.moveTo(x, y);
             } else {
                 context.lineTo(x, y);
             }
+
+            x += sliceWidth;
         }
 
+        context.lineTo(canvas.width, canvas.height / 2);
         context.stroke();
     }
 
