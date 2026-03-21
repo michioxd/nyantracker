@@ -91,6 +91,9 @@ body,
             background: var(--bg-panel);
             color: var(--text-normal);
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
 
             &:hover:not(:disabled) {
                 background: var(--bg-active-row);
