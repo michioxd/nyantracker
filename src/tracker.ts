@@ -25,6 +25,8 @@ export class TrackerPlaybackController {
     private readonly elements: TrackerElements;
     private readonly onStatusChange: (status: string) => void;
     private readonly oscilloscopeRenderer = new OscilloscopeRenderer();
+    private oscilloscopeLineColor = "#4ade80";
+    private oscilloscopeBackgroundColor = "#0c0c0c";
     private readonly patternView: PatternView;
     private readonly player: PlayerController;
     private readonly state: TrackerRuntimeState;
@@ -77,6 +79,12 @@ export class TrackerPlaybackController {
 
     setTempo(value: number): void {
         this.player.setTempo(value);
+    }
+
+    setOscilloscopeTheme(lineColor: string, backgroundColor: string): void {
+        this.oscilloscopeLineColor = lineColor;
+        this.oscilloscopeBackgroundColor = backgroundColor;
+        this.drawOscilloscopes();
     }
 
     togglePlayback(): boolean {
@@ -702,6 +710,8 @@ export class TrackerPlaybackController {
                 this.caches.channelFreqs[channel],
                 this.caches.channelInstruments[channel] || 0,
                 channel,
+                this.oscilloscopeLineColor,
+                this.oscilloscopeBackgroundColor,
             );
         }
     }

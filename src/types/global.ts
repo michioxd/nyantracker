@@ -3,6 +3,7 @@ export interface TrackerElements {
     browserResizer: HTMLElement;
     btnToggleBrowser: HTMLButtonElement;
     sourceSelect: HTMLSelectElement;
+    colorSchemeSelect: HTMLSelectElement;
     searchInput: HTMLInputElement;
     btnSongPrev: HTMLButtonElement;
     btnPagePrev: HTMLButtonElement;

@@ -4,7 +4,13 @@ import { TrackBrowser, type BrowserSourceId } from "./features/browser";
 import { getBrowserSources, getBrowserSource } from "./sources";
 import type { TrackerElements } from "./types/global";
 import { readStorage, readStoredNumber, writeStorage } from "./utils/storage";
-import { APP_CONSTANTS } from "./constants";
+import {
+    APP_CONSTANTS,
+    COLOR_SCHEMES,
+    getColorSchemeDefinition,
+    resolveColorSchemeId,
+    type ColorSchemeId,
+} from "./constants";
 import { TrackerPlaybackController } from "./tracker";
 
 export class nyantracker {
@@ -75,6 +81,7 @@ export class nyantracker {
 
     async init(): Promise<void> {
         this.renderSourceOptions();
+        this.renderColorSchemeOptions();
         this.restorePersistedState();
         this.bindEvents();
         this.updateSliderOutputs();
@@ -101,6 +108,12 @@ export class nyantracker {
             writeStorage(APP_CONSTANTS.storageKeySource, source);
             this.pushBrowserQueryState("");
             void this.trackBrowser.setSource(source);
+        });
+
+        this.elements.colorSchemeSelect.addEventListener("change", () => {
+            const colorScheme = this.getSelectedColorScheme();
+            this.applyColorScheme(colorScheme);
+            writeStorage(APP_CONSTANTS.storageKeyColorScheme, colorScheme);
         });
 
         this.elements.fileInput.addEventListener("change", async (event) => {
@@ -311,6 +324,42 @@ export class nyantracker {
         this.elements.sourceSelect.replaceChildren(fragment);
     }
 
+    private renderColorSchemeOptions(): void {
+        const fragment = document.createDocumentFragment();
+
+        for (const colorScheme of COLOR_SCHEMES) {
+            const option = document.createElement("option");
+            option.value = colorScheme.id;
+            option.textContent = colorScheme.label;
+            fragment.appendChild(option);
+        }
+
+        this.elements.colorSchemeSelect.replaceChildren(fragment);
+    }
+
+    private getSelectedColorScheme(): ColorSchemeId {
+        return this.parseColorScheme(this.elements.colorSchemeSelect.value);
+    }
+
+    private parseColorScheme(value: string | null): ColorSchemeId {
+        return resolveColorSchemeId(value);
+    }
+
+    private applyColorScheme(colorScheme: ColorSchemeId): void {
+        const colorSchemeDefinition = getColorSchemeDefinition(colorScheme);
+        document.documentElement.style.setProperty("--osc-line", colorSchemeDefinition.oscColor);
+        document.documentElement.style.setProperty("--osc-text", colorSchemeDefinition.oscColor);
+        document.documentElement.style.setProperty("--osc-bg", colorSchemeDefinition.oscBg);
+        this.playbackController.setOscilloscopeTheme(colorSchemeDefinition.oscColor, colorSchemeDefinition.oscBg);
+
+        if (colorScheme === "default") {
+            document.documentElement.removeAttribute("data-color");
+            return;
+        }
+
+        document.documentElement.setAttribute("data-color", colorScheme);
+    }
+
     private updateStatus(status: string): void {
         this.elements.topStatus.textContent = status;
     }
@@ -339,6 +388,12 @@ export class nyantracker {
 
         const tweakBarHidden = readStorage(APP_CONSTANTS.storageKeyTweakbarHidden) === "true";
         this.elements.tweakBar.classList.toggle("tweak-bar--hidden", tweakBarHidden);
+
+        const initialColorScheme = this.parseColorScheme(
+            readStorage(APP_CONSTANTS.storageKeyColorScheme) || document.documentElement.getAttribute("data-color"),
+        );
+        this.elements.colorSchemeSelect.value = initialColorScheme;
+        this.applyColorScheme(initialColorScheme);
 
         this.browserPane.restorePersistedState();
         this.playbackController.restorePersistedState();

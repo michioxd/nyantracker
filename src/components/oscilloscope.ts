@@ -13,6 +13,8 @@ export class OscilloscopeRenderer {
         frequency: number,
         instrument: number,
         channelIndex: number,
+        lineColor: string,
+        backgroundColor: string,
     ): void {
         let context = this.contexts.get(canvas);
         if (!context) {
@@ -32,11 +34,11 @@ export class OscilloscopeRenderer {
             canvas.height = canvas.clientHeight;
         }
 
-        context.fillStyle = "#0c0c0c";
+        context.fillStyle = backgroundColor;
         context.fillRect(0, 0, canvas.width, canvas.height);
 
         context.beginPath();
-        context.strokeStyle = "#4ade80";
+        context.strokeStyle = lineColor;
         context.lineWidth = 1.5;
 
         const centerY = canvas.height / 2;
