@@ -78,7 +78,9 @@ export class TrackerPlaybackController {
     }
 
     setTempo(value: number): void {
+        this.state.tempoFactor = Math.max(0.25, value);
         this.player.setTempo(value);
+        this.state.lastFrameTime = performance.now();
     }
 
     setOscilloscopeTheme(lineColor: string, backgroundColor: string): void {
@@ -453,6 +455,7 @@ export class TrackerPlaybackController {
             const now = performance.now();
             let deltaSeconds = Math.max(0, (now - this.state.lastFrameTime) / 1000);
             this.state.lastFrameTime = now;
+            const tempoFactor = this.state.tempoFactor;
 
             if (deltaSeconds > 0.25) {
                 const currentSec = this.state.legacyModule._openmpt_module_get_position_seconds(this.state.uiModulePtr);
@@ -460,13 +463,13 @@ export class TrackerPlaybackController {
                     "openmpt_module_set_position_seconds",
                     "number",
                     ["number", "number"],
-                    [this.state.uiModulePtr, currentSec + deltaSeconds],
+                    [this.state.uiModulePtr, currentSec + deltaSeconds * tempoFactor],
                 );
                 deltaSeconds = 0;
                 this.state.fractionalFrames = 0;
             }
 
-            const totalFrames = deltaSeconds * APP_CONSTANTS.sampleRate + this.state.fractionalFrames;
+            const totalFrames = deltaSeconds * APP_CONSTANTS.sampleRate * tempoFactor + this.state.fractionalFrames;
             const frames = Math.floor(totalFrames);
             this.state.fractionalFrames = totalFrames - frames;
 
@@ -487,12 +490,18 @@ export class TrackerPlaybackController {
             let patternIndex = -1;
             let row = -1;
             let pos = -1;
+            let currentSeconds = -1;
 
             try {
                 patternIndex = this.state.legacyModule._openmpt_module_get_current_pattern(this.state.uiModulePtr);
                 row = this.state.legacyModule._openmpt_module_get_current_row(this.state.uiModulePtr);
                 pos = this.state.legacyModule._openmpt_module_get_current_order(this.state.uiModulePtr);
+                currentSeconds = this.state.legacyModule._openmpt_module_get_position_seconds(this.state.uiModulePtr);
             } catch {}
+
+            if (!this.state.seeking && currentSeconds >= 0) {
+                this.updateProgressUi(currentSeconds, this.getPlaybackDuration());
+            }
 
             if (patternIndex >= 0 && patternIndex !== this.patternView.getCurrentPattern()) {
                 this.renderPatternByIndex(patternIndex);

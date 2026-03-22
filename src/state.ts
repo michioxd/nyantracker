@@ -6,6 +6,7 @@ export interface TrackerRuntimeState {
     uiModulePtr: number;
     dummyBufferPtr: number;
     numChannels: number;
+    tempoFactor: number;
     currentRow: number;
     lastFrameTime: number;
     uiLoopStarted: boolean;
@@ -35,6 +36,7 @@ export function createTrackerRuntimeState(): TrackerRuntimeState {
         uiModulePtr: 0,
         dummyBufferPtr: 0,
         numChannels: 0,
+        tempoFactor: 1,
         currentRow: -1,
         lastFrameTime: 0,
         uiLoopStarted: false,
