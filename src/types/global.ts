@@ -2,6 +2,7 @@ export interface TrackerElements {
     songSelector: HTMLElement;
     browserResizer: HTMLElement;
     btnToggleBrowser: HTMLButtonElement;
+    sourceSelect: HTMLSelectElement;
     searchInput: HTMLInputElement;
     btnSongPrev: HTMLButtonElement;
     songPageInfo: HTMLElement;

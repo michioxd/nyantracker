@@ -20,6 +20,7 @@ const trackerApp = new nyantracker(appRoot, {
     songSelector: getElement<HTMLElement>(appRoot, ".song-selector"),
     browserResizer: getElement<HTMLElement>(appRoot, ".resize-browser"),
     btnToggleBrowser: getElement<HTMLButtonElement>(appRoot, "#btnToggleBrowser"),
+    sourceSelect: getElement<HTMLSelectElement>(appRoot, "#sourceSelect"),
     searchInput: getElement<HTMLInputElement>(appRoot, "#searchInput"),
     btnSongPrev: getElement<HTMLButtonElement>(appRoot, "#btnSongPrev"),
     songPageInfo: getElement<HTMLElement>(appRoot, "#songPageInfo"),

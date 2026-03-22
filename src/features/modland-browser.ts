@@ -1,6 +1,22 @@
 import { cssEscape } from "../utils/css-escape";
-import { fetchModlandCatalog, fetchModlandModule, filterModlandEntries, type ModlandEntry } from "../lib/modland";
+import { fetchKeygenCatalog, fetchKeygenModule, type KeygenEntry } from "../lib/keygen";
+import { fetchModlandCatalog, fetchModlandModule, type ModlandEntry } from "../lib/modland";
 import { readStorage, writeStorage } from "../utils/storage";
+
+export type BrowserSourceId = "modland" | "keygen";
+
+export interface BrowserSongEntry {
+    source: BrowserSourceId;
+    path: string;
+    fileName: string;
+    tracker: string;
+    artist: string;
+    title: string;
+    ext: string;
+    sizeKb: number;
+    searchText: string;
+    rawEntry: ModlandEntry | KeygenEntry;
+}
 
 export interface ModlandBrowserElements {
     searchInput: HTMLInputElement;
@@ -14,21 +30,21 @@ export interface ModlandBrowserElements {
 export interface ModlandBrowserOptions {
     renderLimit: number;
     storageKeySearch: string;
-    onBeforeLoadModule?: (entry: ModlandEntry) => void;
+    onBeforeLoadModule?: (entry: BrowserSongEntry) => void;
     onStatusChange: (status: string) => void;
-    onLoadModule: (entry: ModlandEntry, buffer: ArrayBuffer, fileName: string) => Promise<void>;
+    onLoadModule: (entry: BrowserSongEntry, buffer: ArrayBuffer, fileName: string) => Promise<void>;
 }
 
 export class ModlandBrowser {
     private readonly elements: ModlandBrowserElements;
     private readonly options: ModlandBrowserOptions;
-    private entries: ModlandEntry[] = [];
-    private filteredEntries: ModlandEntry[] = [];
+    private readonly entriesBySource = new Map<BrowserSourceId, BrowserSongEntry[]>();
+    private readonly catalogPromises = new Map<BrowserSourceId, Promise<void>>();
+    private filteredEntries: BrowserSongEntry[] = [];
+    private sourceId: BrowserSourceId = "modland";
     private activePath = "";
     private selectedSongItem: HTMLElement | null = null;
     private page = 0;
-    private catalogLoaded = false;
-    private catalogPromise: Promise<void> | null = null;
     private loading = false;
     private loadingSongItem: HTMLElement | null = null;
 
@@ -41,6 +57,25 @@ export class ModlandBrowser {
         const savedSearch = readStorage(this.options.storageKeySearch);
         if (savedSearch !== null) {
             this.elements.searchInput.value = savedSearch;
+        }
+    }
+
+    async setSource(sourceId: BrowserSourceId, autoLoad = true): Promise<void> {
+        this.sourceId = sourceId;
+        this.page = 0;
+
+        if (this.entriesBySource.has(sourceId)) {
+            this.applyFilter();
+            return;
+        }
+
+        this.filteredEntries = [];
+        this.selectedSongItem = null;
+        this.elements.songList.replaceChildren();
+        this.updatePagination(0, 0, autoLoad ? "Loading..." : "0/0");
+
+        if (autoLoad) {
+            await this.initCatalog();
         }
     }
 
@@ -71,32 +106,41 @@ export class ModlandBrowser {
     }
 
     async initCatalog(): Promise<void> {
-        if (this.catalogLoaded) {
+        if (this.entriesBySource.has(this.sourceId)) {
+            this.applyFilter();
             return;
         }
 
-        if (this.catalogPromise) {
-            return this.catalogPromise;
+        const existingPromise = this.catalogPromises.get(this.sourceId);
+        if (existingPromise) {
+            return existingPromise;
         }
 
         this.updatePagination(0, 0, "Loading...");
 
-        this.catalogPromise = (async () => {
+        const sourceId = this.sourceId;
+        const catalogPromise = (async () => {
             try {
-                this.entries = await fetchModlandCatalog();
-                this.catalogLoaded = true;
-                this.applyFilter();
-                this.options.onStatusChange("IDLE");
+                const entries = await this.loadEntriesForSource(sourceId);
+                this.entriesBySource.set(sourceId, entries);
+
+                if (this.sourceId === sourceId) {
+                    this.applyFilter();
+                    this.options.onStatusChange("IDLE");
+                }
             } catch (error) {
-                console.error("Failed to load Modland catalog:", error);
-                this.updatePagination(0, 0, "Unavailable");
-                this.options.onStatusChange("MODLAND CATALOG FAILED");
+                console.error(`Failed to load ${sourceId} catalog:`, error);
+                if (this.sourceId === sourceId) {
+                    this.updatePagination(0, 0, "Unavailable");
+                    this.options.onStatusChange(`${sourceId.toUpperCase()} CATALOG FAILED`);
+                }
             } finally {
-                this.catalogPromise = null;
+                this.catalogPromises.delete(sourceId);
             }
         })();
 
-        return this.catalogPromise;
+        this.catalogPromises.set(sourceId, catalogPromise);
+        return catalogPromise;
     }
 
     setActiveSong(pathOrFileName: string): void {
@@ -157,7 +201,7 @@ export class ModlandBrowser {
             return;
         }
 
-        this.filteredEntries = filterModlandEntries(this.entries, this.elements.searchInput.value);
+        this.filteredEntries = this.filterEntries(this.getCurrentEntries(), this.elements.searchInput.value);
         this.page = 0;
         this.renderSongList();
     }
@@ -191,7 +235,7 @@ export class ModlandBrowser {
 
             const titleText = document.createElement("span");
             titleText.className = "title-text";
-            titleText.textContent = entry.title || entry.archiveEntryName;
+            titleText.textContent = entry.title || entry.fileName;
             title.appendChild(titleText);
 
             const bottom = document.createElement("div");
@@ -216,7 +260,8 @@ export class ModlandBrowser {
         if (entriesToRender.length === 0) {
             const empty = document.createElement("div");
             empty.className = "song-list-empty";
-            empty.textContent = this.entries.length === 0 ? "No songs loaded yet." : "No matching playable songs.";
+            empty.textContent =
+                this.getCurrentEntries().length === 0 ? "No songs loaded yet." : "No matching playable songs.";
             fragment.appendChild(empty);
             this.selectedSongItem = null;
         }
@@ -225,7 +270,7 @@ export class ModlandBrowser {
         this.updatePagination(entriesToRender.length, this.filteredEntries.length);
     }
 
-    private async loadEntry(entry: ModlandEntry): Promise<void> {
+    private async loadEntry(entry: BrowserSongEntry): Promise<void> {
         if (this.loading) {
             return;
         }
@@ -239,7 +284,7 @@ export class ModlandBrowser {
         this.updateLoadingProgress(0);
 
         try {
-            const module = await fetchModlandModule(entry, (progressPercent) => {
+            const module = await this.fetchModule(entry, (progressPercent) => {
                 this.updateLoadingProgress(progressPercent);
                 this.options.onStatusChange(`FETCHING MODULE... ${Math.round(progressPercent)}%`);
             });
@@ -276,5 +321,71 @@ export class ModlandBrowser {
         }
 
         return Math.ceil(totalCount / this.options.renderLimit);
+    }
+
+    private getCurrentEntries(): BrowserSongEntry[] {
+        return this.entriesBySource.get(this.sourceId) ?? [];
+    }
+
+    private filterEntries(entries: BrowserSongEntry[], query: string): BrowserSongEntry[] {
+        const normalized = query.trim().toLowerCase();
+        if (!normalized) {
+            return entries;
+        }
+
+        const terms = normalized.split(/\s+/).filter(Boolean);
+        return entries.filter((entry) => terms.every((term) => entry.searchText.includes(term)));
+    }
+
+    private async loadEntriesForSource(sourceId: BrowserSourceId): Promise<BrowserSongEntry[]> {
+        if (sourceId === "keygen") {
+            const entries = await fetchKeygenCatalog();
+            return entries.map((entry) => this.mapKeygenEntry(entry));
+        }
+
+        const entries = await fetchModlandCatalog();
+        return entries.map((entry) => this.mapModlandEntry(entry));
+    }
+
+    private async fetchModule(
+        entry: BrowserSongEntry,
+        onProgress: (progressPercent: number) => void,
+    ): Promise<{ buffer: ArrayBuffer; fileName: string }> {
+        if (entry.source === "keygen") {
+            return fetchKeygenModule(entry.rawEntry as KeygenEntry, onProgress);
+        }
+
+        return fetchModlandModule(entry.rawEntry as ModlandEntry, onProgress);
+    }
+
+    private mapModlandEntry(entry: ModlandEntry): BrowserSongEntry {
+        return {
+            source: "modland",
+            path: entry.path,
+            fileName: entry.archiveEntryName,
+            tracker: entry.tracker,
+            artist: entry.artist || "Unknown",
+            title: entry.title || entry.archiveEntryName,
+            ext: entry.ext,
+            sizeKb: entry.sizeKb,
+            searchText: `${entry.title} ${entry.artist} ${entry.tracker} ${entry.ext}`.toLowerCase(),
+            rawEntry: entry,
+        };
+    }
+
+    private mapKeygenEntry(entry: KeygenEntry): BrowserSongEntry {
+        return {
+            source: "keygen",
+            path: entry.path,
+            fileName: entry.fileName,
+            tracker: entry.tracker,
+            artist: entry.artist || "Unknown",
+            title: entry.title || entry.fileName,
+            ext: entry.ext,
+            sizeKb: entry.sizeKb,
+            searchText:
+                `${entry.title} ${entry.trackTitle} ${entry.artist} ${entry.tracker} ${entry.ext} ${entry.fileName}`.toLowerCase(),
+            rawEntry: entry,
+        };
     }
 }

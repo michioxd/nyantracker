@@ -11,7 +11,7 @@ import { OscilloscopeRenderer } from "./components/oscilloscope";
 import { PatternView } from "./components/pattern-view";
 import { PlayerController } from "./components/player-controller";
 import { BrowserPaneController } from "./features/browser-pane";
-import { ModlandBrowser } from "./features/modland-browser";
+import { ModlandBrowser, type BrowserSourceId } from "./features/modland-browser";
 import { readStorage, readStoredNumber, writeStorage } from "./utils/storage";
 import type { TrackerElements } from "./types/global";
 
@@ -21,6 +21,7 @@ export class nyantracker {
     private static readonly STORAGE_KEY_TWEAKBAR_HIDDEN = "nyantracker:tweakbar-hidden";
     private static readonly STORAGE_KEY_VOLUME = "nyantracker:volume";
     private static readonly STORAGE_KEY_SEARCH = "nyantracker:modland-search";
+    private static readonly STORAGE_KEY_SOURCE = "nyantracker:browser-source";
     private static readonly STORAGE_KEY_BROWSER_WIDTH = "nyantracker:browser-width";
     private static readonly STORAGE_KEY_BROWSER_OPEN = "nyantracker:browser-open";
     private static readonly STORAGE_KEY_OSC_HEIGHT = "nyantracker:osc-height";
@@ -87,7 +88,7 @@ export class nyantracker {
                 renderLimit: 300,
                 storageKeySearch: nyantracker.STORAGE_KEY_SEARCH,
                 onBeforeLoadModule: (entry) => {
-                    this.prepareForIncomingLoad(entry.archiveEntryName, `${entry.artist} - ${entry.title}`);
+                    this.prepareForIncomingLoad(entry.fileName, `${entry.artist} - ${entry.title}`);
                 },
                 onStatusChange: (status) => this.updateStatus(status),
                 onLoadModule: async (_entry, buffer, fileName) => {
@@ -155,6 +156,12 @@ export class nyantracker {
     }
 
     private bindEvents(): void {
+        this.elements.sourceSelect.addEventListener("change", () => {
+            const source = this.getSelectedBrowserSource();
+            writeStorage(nyantracker.STORAGE_KEY_SOURCE, source);
+            void this.modlandBrowser.setSource(source);
+        });
+
         this.elements.fileInput.addEventListener("change", async (event) => {
             const target = event.currentTarget as HTMLInputElement;
             const file = target.files?.[0];
@@ -278,14 +285,18 @@ export class nyantracker {
         this.elements.tempoOutput.value = `${Number(this.elements.tempoSlider.value).toFixed(2)}x`;
     }
 
+    private getSelectedBrowserSource(): BrowserSourceId {
+        return this.parseBrowserSource(this.elements.sourceSelect.value);
+    }
+
+    private parseBrowserSource(value: string | null): BrowserSourceId {
+        return value === "keygen" ? "keygen" : "modland";
+    }
+
     private bindResizers(): void {
         this.browserPane.bindResizers();
 
         this.elements.oscResizer.addEventListener("pointerdown", (event) => {
-            if (this.isCompactLayout()) {
-                return;
-            }
-
             const startY = event.clientY;
             const startHeight = this.isOscHidden() ? 0 : this.elements.oscView.getBoundingClientRect().height;
 
@@ -352,12 +363,6 @@ export class nyantracker {
     private applyResponsiveLayoutState(): void {
         this.browserPane.applyResponsiveLayoutState();
 
-        if (this.isCompactLayout()) {
-            this.elements.oscView.classList.remove("osc-view--hidden");
-            this.elements.oscView.style.height = "";
-            return;
-        }
-
         if (this.preferredOscHidden) {
             this.applyOscHiddenState(false);
             return;
@@ -365,10 +370,6 @@ export class nyantracker {
 
         const currentOscHeight = this.elements.oscView.getBoundingClientRect().height;
         this.applyOscHeight(this.preferredOscHeight ?? (currentOscHeight || nyantracker.MIN_OSC_HEIGHT), false);
-    }
-
-    private isCompactLayout(): boolean {
-        return window.matchMedia("(width <= 960px)").matches;
     }
 
     private getMaxOscHeight(): number {
@@ -1117,6 +1118,10 @@ export class nyantracker {
     }
 
     private restorePersistedState(): void {
+        const savedSource = this.parseBrowserSource(readStorage(nyantracker.STORAGE_KEY_SOURCE));
+        this.elements.sourceSelect.value = savedSource;
+        void this.modlandBrowser.setSource(savedSource, false);
+
         const savedVolume = readStoredNumber(nyantracker.STORAGE_KEY_VOLUME);
         if (savedVolume !== null) {
             const min = Number(this.elements.volumeSlider.min || 0);

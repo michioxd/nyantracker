@@ -11,12 +11,10 @@
 <body>
     <div id="app">
         <div class="song-selector">
-            <header class="top-bar">
-                <strong>
-                    <a href="https://modland.com" target="_blank">
-                        modland.com</a> browser
-                </strong>
-            </header>
+            <select id="sourceSelect" title="Select song source">
+                <option value="modland">modland.com</option>
+                <option value="keygen">Keygen music</option>
+            </select>
             <input type="text" id="searchInput" placeholder="Search..." />
             <div class="song-pagination">
                 <button type="button" id="btnSongPrev" aria-label="Previous song page">

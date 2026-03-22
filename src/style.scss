@@ -63,8 +63,24 @@ body,
     gap: 12px;
     border-right: 1px solid var(--border-color);
 
+    select#sourceSelect {
+        width: 100%;
+        padding: 6px 10px;
+        font-size: 13px;
+        border: none;
+        font-family: inherit;
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-panel);
+        color: var(--text-normal);
+
+        &:hover {
+            background: var(--bg-active-row);
+        }
+    }
+
     input#searchInput {
         padding: 6px 10px;
+        font-size: 13px;
         border: 1px solid var(--border-color);
         border-width: 1px 0;
         background: var(--bg-panel);
@@ -758,49 +774,5 @@ canvas {
 .tweak-bar {
     &--hidden {
         display: none;
-    }
-}
-
-@media (width <=960px) {
-    #app {
-        padding: 0;
-        flex-direction: column;
-    }
-
-    #app.browser-hidden {
-        .song-selector {
-            display: none;
-        }
-    }
-
-    .resizer.resize-browser,
-    .resizer.resize-osc {
-        display: none;
-    }
-
-    .song-selector {
-        width: 100%;
-        height: 260px;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-    }
-
-    .tracker-shell {
-        height: 100vh;
-        padding: 10px;
-    }
-
-    .top-bar,
-    .info-bar,
-    .tweak-bar {
-        padding: 10px;
-    }
-
-    .slider-control {
-        grid-template-columns: 1fr;
-
-        output {
-            text-align: left;
-        }
     }
 }
