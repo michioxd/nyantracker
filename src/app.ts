@@ -62,7 +62,6 @@ export class nyantracker {
                 storageKeyOpen: APP_CONSTANTS.storageKeyBrowserOpen,
                 minWidth: APP_CONSTANTS.minBrowserWidth,
                 minTrackerWidth: APP_CONSTANTS.minTrackerWidth,
-                compactMediaQuery: "(width <= 960px)",
                 onOpen: async () => {
                     await this.trackBrowser.initCatalog();
                 },

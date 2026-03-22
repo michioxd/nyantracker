@@ -12,7 +12,6 @@ export interface BrowserPaneOptions {
     storageKeyOpen: string;
     minWidth: number;
     minTrackerWidth: number;
-    compactMediaQuery: string;
     onOpen?: () => Promise<void> | void;
     onLayoutChange?: () => void;
 }
@@ -50,10 +49,6 @@ export class BrowserPaneController {
 
     bindResizers(): void {
         this.elements.browserResizer.addEventListener("pointerdown", (event) => {
-            if (this.isCompactLayout()) {
-                return;
-            }
-
             const startX = event.clientX;
             const startWidth = this.open ? this.elements.songSelector.getBoundingClientRect().width : 0;
             let nextWidth = startWidth;
@@ -84,13 +79,6 @@ export class BrowserPaneController {
     }
 
     applyResponsiveLayoutState(): void {
-        if (this.isCompactLayout()) {
-            if (this.open) {
-                this.elements.songSelector.style.width = "";
-            }
-            return;
-        }
-
         if (!this.open) {
             return;
         }
@@ -156,10 +144,6 @@ export class BrowserPaneController {
         if (persist) {
             writeStorage(this.options.storageKeyWidth, String(Math.round(clampedWidth)));
         }
-    }
-
-    private isCompactLayout(): boolean {
-        return window.matchMedia(this.options.compactMediaQuery).matches;
     }
 
     private beginResizeGesture(

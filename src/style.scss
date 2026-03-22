@@ -188,7 +188,7 @@ body,
                 }
 
                 &::after {
-                    content: '';
+                    content: "";
                     width: var(--fetching-progress, 0%);
                     height: 100%;
                     position: absolute;
@@ -296,7 +296,6 @@ body,
 }
 
 @keyframes song-title-marquee {
-
     0%,
     15%,
     100% {
@@ -376,7 +375,7 @@ output {
     align-items: center;
     gap: 10px;
 
-    >span {
+    > span {
         min-width: 44px;
         color: var(--term-cyan);
         font-variant-numeric: tabular-nums;
@@ -474,7 +473,7 @@ output {
 input[type="file"] {
     display: none;
 
-    &:disabled+#fileLabel {
+    &:disabled + #fileLabel {
         border-color: #444;
         color: #444;
         cursor: not-allowed;
