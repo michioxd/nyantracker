@@ -5,7 +5,9 @@ export interface TrackerElements {
     sourceSelect: HTMLSelectElement;
     searchInput: HTMLInputElement;
     btnSongPrev: HTMLButtonElement;
+    btnPagePrev: HTMLButtonElement;
     songPageInfo: HTMLElement;
+    btnPageNext: HTMLButtonElement;
     btnSongNext: HTMLButtonElement;
     songList: HTMLElement;
     fileInput: HTMLInputElement;

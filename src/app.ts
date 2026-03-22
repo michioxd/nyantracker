@@ -11,7 +11,7 @@ import { OscilloscopeRenderer } from "./components/oscilloscope";
 import { PatternView } from "./components/pattern-view";
 import { PlayerController } from "./components/player-controller";
 import { BrowserPaneController } from "./features/browser-pane";
-import { ModlandBrowser, type BrowserSourceId } from "./features/modland-browser";
+import { TrackBrowser, type BrowserSourceId } from "./features/browser";
 import { readStorage, readStoredNumber, writeStorage } from "./utils/storage";
 import type { TrackerElements } from "./types/global";
 
@@ -63,7 +63,7 @@ export class nyantracker {
     private readonly patternView: PatternView;
     private readonly player: PlayerController;
     private readonly browserPane: BrowserPaneController;
-    private readonly modlandBrowser: ModlandBrowser;
+    private readonly trackBrowser: TrackBrowser;
     private requestedPatternIndex = -1;
     private patternPrefetchScheduled = false;
     private patternResizeObserver: ResizeObserver | null = null;
@@ -75,11 +75,13 @@ export class nyantracker {
         this.root = root;
         this.elements = elements;
         this.patternView = new PatternView(elements.patternHeader, elements.patternBody, elements.oscView);
-        this.modlandBrowser = new ModlandBrowser(
+        this.trackBrowser = new TrackBrowser(
             {
                 searchInput: elements.searchInput,
                 btnSongPrev: elements.btnSongPrev,
+                btnPagePrev: elements.btnPagePrev,
                 songPageInfo: elements.songPageInfo,
+                btnPageNext: elements.btnPageNext,
                 btnSongNext: elements.btnSongNext,
                 songList: elements.songList,
                 titleDisplay: elements.titleDisplay,
@@ -110,7 +112,7 @@ export class nyantracker {
                 minTrackerWidth: nyantracker.MIN_TRACKER_WIDTH,
                 compactMediaQuery: "(width <= 960px)",
                 onOpen: async () => {
-                    await this.modlandBrowser.initCatalog();
+                    await this.trackBrowser.initCatalog();
                 },
                 onLayoutChange: () => {
                     this.schedulePatternLayoutSync();
@@ -137,7 +139,7 @@ export class nyantracker {
 
     async init(): Promise<void> {
         this.restorePersistedState();
-        this.modlandBrowser.restorePersistedState();
+        this.trackBrowser.restorePersistedState();
         this.bindEvents();
         this.updateSliderOutputs();
 
@@ -147,7 +149,7 @@ export class nyantracker {
             this.browserPane.setEnabled(true);
             this.updateStatus("IDLE");
             if (this.browserPane.isOpen()) {
-                void this.modlandBrowser.initCatalog();
+                void this.trackBrowser.initCatalog();
             }
         } catch (e) {
             console.error("Failed to load legacy OpenMPT module:", e);
@@ -159,7 +161,7 @@ export class nyantracker {
         this.elements.sourceSelect.addEventListener("change", () => {
             const source = this.getSelectedBrowserSource();
             writeStorage(nyantracker.STORAGE_KEY_SOURCE, source);
-            void this.modlandBrowser.setSource(source);
+            void this.trackBrowser.setSource(source);
         });
 
         this.elements.fileInput.addEventListener("change", async (event) => {
@@ -170,7 +172,7 @@ export class nyantracker {
             }
             await this.loadFile(file);
         });
-        this.modlandBrowser.bindEvents();
+        this.trackBrowser.bindEvents();
 
         this.browserPane.bindEvents();
 
@@ -421,7 +423,7 @@ export class nyantracker {
         this.prepareForIncomingLoad(file.name, file.name);
         this.player.ensure();
         this.player.setVolume(Number(this.elements.volumeSlider.value));
-        this.modlandBrowser.setActiveSong(file.name);
+        this.trackBrowser.setActiveSong(file.name);
         this.currentFileName = file.name;
         this.updateStatus("PARSING MODULE...");
 
@@ -1120,7 +1122,7 @@ export class nyantracker {
     private restorePersistedState(): void {
         const savedSource = this.parseBrowserSource(readStorage(nyantracker.STORAGE_KEY_SOURCE));
         this.elements.sourceSelect.value = savedSource;
-        void this.modlandBrowser.setSource(savedSource, false);
+        void this.trackBrowser.setSource(savedSource, false);
 
         const savedVolume = readStoredNumber(nyantracker.STORAGE_KEY_VOLUME);
         if (savedVolume !== null) {

@@ -18,16 +18,18 @@ export interface BrowserSongEntry {
     rawEntry: ModlandEntry | KeygenEntry;
 }
 
-export interface ModlandBrowserElements {
+export interface TrackBrowserElements {
     searchInput: HTMLInputElement;
     btnSongPrev: HTMLButtonElement;
+    btnPagePrev: HTMLButtonElement;
     songPageInfo: HTMLElement;
+    btnPageNext: HTMLButtonElement;
     btnSongNext: HTMLButtonElement;
     songList: HTMLElement;
     titleDisplay: HTMLElement;
 }
 
-export interface ModlandBrowserOptions {
+export interface TrackBrowserOptions {
     renderLimit: number;
     storageKeySearch: string;
     onBeforeLoadModule?: (entry: BrowserSongEntry) => void;
@@ -35,9 +37,9 @@ export interface ModlandBrowserOptions {
     onLoadModule: (entry: BrowserSongEntry, buffer: ArrayBuffer, fileName: string) => Promise<void>;
 }
 
-export class ModlandBrowser {
-    private readonly elements: ModlandBrowserElements;
-    private readonly options: ModlandBrowserOptions;
+export class TrackBrowser {
+    private readonly elements: TrackBrowserElements;
+    private readonly options: TrackBrowserOptions;
     private readonly entriesBySource = new Map<BrowserSourceId, BrowserSongEntry[]>();
     private readonly catalogPromises = new Map<BrowserSourceId, Promise<void>>();
     private filteredEntries: BrowserSongEntry[] = [];
@@ -48,7 +50,7 @@ export class ModlandBrowser {
     private loading = false;
     private loadingSongItem: HTMLElement | null = null;
 
-    constructor(elements: ModlandBrowserElements, options: ModlandBrowserOptions) {
+    constructor(elements: TrackBrowserElements, options: TrackBrowserOptions) {
         this.elements = elements;
         this.options = options;
     }
@@ -85,7 +87,7 @@ export class ModlandBrowser {
             this.applyFilter();
         });
 
-        this.elements.btnSongPrev.addEventListener("click", () => {
+        this.elements.btnPagePrev.addEventListener("click", () => {
             if (this.page <= 0) {
                 return;
             }
@@ -94,7 +96,7 @@ export class ModlandBrowser {
             this.renderSongList();
         });
 
-        this.elements.btnSongNext.addEventListener("click", () => {
+        this.elements.btnPageNext.addEventListener("click", () => {
             const totalPages = this.getTotalPages();
             if (this.page >= totalPages - 1) {
                 return;
@@ -102,6 +104,14 @@ export class ModlandBrowser {
 
             this.page += 1;
             this.renderSongList();
+        });
+
+        this.elements.btnSongPrev.addEventListener("click", () => {
+            void this.loadRelativeSong(-1);
+        });
+
+        this.elements.btnSongNext.addEventListener("click", () => {
+            void this.loadRelativeSong(1);
         });
     }
 
@@ -311,8 +321,11 @@ export class ModlandBrowser {
 
         const totalPages = Math.max(1, this.getTotalPages(totalCount));
         const hasEntries = totalCount > 0;
-        this.elements.btnSongPrev.disabled = this.loading || !hasEntries || this.page <= 0;
-        this.elements.btnSongNext.disabled = this.loading || !hasEntries || this.page >= totalPages - 1;
+        const activeEntryIndex = this.getActiveFilteredEntryIndex();
+        this.elements.btnPagePrev.disabled = this.loading || !hasEntries || this.page <= 0;
+        this.elements.btnPageNext.disabled = this.loading || !hasEntries || this.page >= totalPages - 1;
+        this.elements.btnSongPrev.disabled = this.loading || activeEntryIndex <= 0;
+        this.elements.btnSongNext.disabled = this.loading || activeEntryIndex < 0 || activeEntryIndex >= totalCount - 1;
     }
 
     private getTotalPages(totalCount = this.filteredEntries.length): number {
@@ -321,6 +334,37 @@ export class ModlandBrowser {
         }
 
         return Math.ceil(totalCount / this.options.renderLimit);
+    }
+
+    private getActiveFilteredEntryIndex(): number {
+        if (!this.activePath) {
+            return -1;
+        }
+
+        return this.filteredEntries.findIndex(
+            (entry) => entry.path === this.activePath || entry.fileName === this.activePath,
+        );
+    }
+
+    private async loadRelativeSong(offset: -1 | 1): Promise<void> {
+        if (this.loading) {
+            return;
+        }
+
+        const currentIndex = this.getActiveFilteredEntryIndex();
+        if (currentIndex < 0) {
+            return;
+        }
+
+        const nextIndex = currentIndex + offset;
+        if (nextIndex < 0 || nextIndex >= this.filteredEntries.length) {
+            return;
+        }
+
+        const nextEntry = this.filteredEntries[nextIndex];
+        this.page = Math.floor(nextIndex / this.options.renderLimit);
+        this.renderSongList();
+        await this.loadEntry(nextEntry);
     }
 
     private getCurrentEntries(): BrowserSongEntry[] {
