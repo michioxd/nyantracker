@@ -113,6 +113,7 @@ export class nyantracker {
 
         this.trackBrowser.bindEvents();
         this.browserPane.bindEvents();
+        this.browserPane.bindResizers();
 
         this.elements.btnPlay.addEventListener("click", () => {
             const paused = this.playbackController.togglePlayback();
