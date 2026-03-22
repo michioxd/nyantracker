@@ -8,6 +8,7 @@ const buildTime = Date.now();
 const buildDate = new Date(buildTime).toISOString();
 const gitCommit = execSync("git rev-parse --short HEAD").toString().trim();
 const gitCommitFull = execSync("git rev-parse HEAD").toString().trim();
+const gitCurrentBranch = execSync("git rev-parse --abbrev-ref HEAD").toString().trim();
 
 export default defineConfig({
     plugins: [
@@ -22,6 +23,7 @@ export default defineConfig({
         "import.meta.env.VITE_BUILD_DATE": JSON.stringify(buildDate),
         "import.meta.env.VITE_GIT_COMMIT": JSON.stringify(gitCommit),
         "import.meta.env.VITE_GIT_COMMIT_FULL": JSON.stringify(gitCommitFull),
+        "import.meta.env.VITE_GIT_CURRENT_BRANCH": JSON.stringify(gitCurrentBranch),
     },
     build: {
         minify: "terser",
