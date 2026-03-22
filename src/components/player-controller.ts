@@ -81,7 +81,8 @@ export class PlayerController {
             this.manuallyPaused = false;
             this.paused = true;
             this.stopped = true;
-            this.events.onError(`AUDIO ENGINE FAILED (${error.type})`);
+            console.error("Playback error:", error);
+            this.events.onError(`PLAYBACK ERROR (${error.type})`);
         });
 
         this.player = player;

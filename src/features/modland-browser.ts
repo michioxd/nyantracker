@@ -29,6 +29,8 @@ export class ModlandBrowser {
     private page = 0;
     private catalogLoaded = false;
     private catalogPromise: Promise<void> | null = null;
+    private loading = false;
+    private loadingSongItem: HTMLElement | null = null;
 
     constructor(elements: ModlandBrowserElements, options: ModlandBrowserOptions) {
         this.elements = elements;
@@ -113,7 +115,48 @@ export class ModlandBrowser {
         }
     }
 
+    private setLoadingState(loading: boolean): void {
+        this.loading = loading;
+        this.elements.songList.classList.toggle("disabled", loading);
+        this.elements.songList.setAttribute("aria-busy", String(loading));
+        this.elements.searchInput.disabled = loading;
+        this.updatePagination(this.getVisibleCountForCurrentPage(), this.filteredEntries.length);
+    }
+
+    private updateLoadingProgress(progressPercent: number): void {
+        if (!this.loadingSongItem) return;
+
+        const roundedProgress = Math.max(0, Math.min(100, Math.round(progressPercent)));
+        this.loadingSongItem.classList.add("fetching");
+        this.loadingSongItem.style.setProperty("--fetching-progress", `${roundedProgress}%`);
+        this.loadingSongItem.dataset.fetchingLabel = `${roundedProgress}%`;
+        this.loadingSongItem.setAttribute("aria-label", `Fetching module ${roundedProgress}%`);
+    }
+
+    private clearLoadingProgress(): void {
+        if (!this.loadingSongItem) return;
+
+        this.loadingSongItem.classList.remove("fetching");
+        this.loadingSongItem.style.removeProperty("--fetching-progress");
+        delete this.loadingSongItem.dataset.fetchingLabel;
+        this.loadingSongItem.removeAttribute("aria-label");
+        this.loadingSongItem = null;
+    }
+
+    private getVisibleCountForCurrentPage(): number {
+        if (this.filteredEntries.length <= 0) {
+            return 0;
+        }
+
+        const pageStart = this.page * this.options.renderLimit;
+        return this.filteredEntries.slice(pageStart, pageStart + this.options.renderLimit).length;
+    }
+
     private applyFilter(): void {
+        if (this.loading) {
+            return;
+        }
+
         this.filteredEntries = filterModlandEntries(this.entries, this.elements.searchInput.value);
         this.page = 0;
         this.renderSongList();
@@ -183,19 +226,30 @@ export class ModlandBrowser {
     }
 
     private async loadEntry(entry: ModlandEntry): Promise<void> {
+        if (this.loading) {
+            return;
+        }
+
         this.options.onBeforeLoadModule?.(entry);
         this.setActiveSong(entry.path);
         this.elements.titleDisplay.textContent = `${entry.artist} - ${entry.title}`;
         this.options.onStatusChange("FETCHING MODULE... 0%");
+        this.loadingSongItem = this.selectedSongItem;
+        this.setLoadingState(true);
+        this.updateLoadingProgress(0);
 
         try {
             const module = await fetchModlandModule(entry, (progressPercent) => {
+                this.updateLoadingProgress(progressPercent);
                 this.options.onStatusChange(`FETCHING MODULE... ${Math.round(progressPercent)}%`);
             });
             await this.options.onLoadModule(entry, module.buffer, module.fileName);
         } catch (error) {
             console.error("Failed to load Modland module:", error);
             this.options.onStatusChange("MODULE LOAD FAILED");
+        } finally {
+            this.clearLoadingProgress();
+            this.setLoadingState(false);
         }
     }
 
@@ -212,8 +266,8 @@ export class ModlandBrowser {
 
         const totalPages = Math.max(1, this.getTotalPages(totalCount));
         const hasEntries = totalCount > 0;
-        this.elements.btnSongPrev.disabled = !hasEntries || this.page <= 0;
-        this.elements.btnSongNext.disabled = !hasEntries || this.page >= totalPages - 1;
+        this.elements.btnSongPrev.disabled = this.loading || !hasEntries || this.page <= 0;
+        this.elements.btnSongNext.disabled = this.loading || !hasEntries || this.page >= totalPages - 1;
     }
 
     private getTotalPages(totalCount = this.filteredEntries.length): number {

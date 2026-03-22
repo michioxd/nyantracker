@@ -1,7 +1,7 @@
 import { unzipSync } from "fflate";
 
 const PLAYABLE_EXTENSIONS = new Set(
-    "mptm mod s3m xm it 669 amf ams c67 dbm digi dmf dsm dsym dtm far fmt ice j2b m15 mdl med mms mt2 mtm mus nst okt plm psm pt36 ptm sfx sfx2 st26 stk stm stx stp symmod ult wow gdm mo3 oxm umx xpk ppm mmcmp".split(
+    "mptm mod s3m xm it 669 amf ams c67 dbm digi dmf dsm dsym far ice j2b m15 mdl med mms mt2 mtm nst okt plm psm pt36 ptm sfx sfx2 st26 stk stm stx stp symmod ult wow gdm mo3 oxm umx xpk ppm mmcmp".split(
         " ",
     ),
 );

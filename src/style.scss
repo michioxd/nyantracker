@@ -118,10 +118,21 @@ body,
         overflow-y: auto;
         display: flex;
         flex-direction: column;
+        transition: opacity 0.2s;
+
+        &.disabled {
+            pointer-events: none;
+            opacity: 0.8;
+
+            .song-item {
+                cursor: wait;
+            }
+        }
 
         .song-item {
             appearance: none;
             width: 100%;
+            position: relative;
             text-align: left;
             padding: 8px 10px;
             border-bottom: 1px dashed var(--border-color);
@@ -144,6 +155,35 @@ body,
                 background: var(--bg-panel);
             }
 
+            &.fetching {
+                cursor: wait;
+
+                &::before {
+                    content: attr(data-fetching-label);
+                    position: absolute;
+                    top: 8px;
+                    right: 10px;
+                    color: var(--term-green);
+                    font-size: 12px;
+                    font-weight: 700;
+                    font-variant-numeric: tabular-nums;
+                    z-index: 2;
+                }
+
+                &::after {
+                    content: '';
+                    width: var(--fetching-progress, 0%);
+                    height: 100%;
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    background: var(--term-green);
+                    opacity: 0.2;
+                    transition: width 0.2s;
+                    z-index: 0;
+                }
+            }
+
             .title {
                 display: block;
                 overflow: hidden;
@@ -152,6 +192,8 @@ body,
                 font-weight: 700;
                 color: var(--term-cyan);
                 white-space: nowrap;
+                position: relative;
+                z-index: 1;
 
                 .title-text {
                     display: inline-block;
@@ -175,6 +217,8 @@ body,
                 flex-direction: row;
                 align-items: center;
                 justify-content: space-between;
+                position: relative;
+                z-index: 1;
 
                 .artist {
                     font-weight: 700;
@@ -387,7 +431,7 @@ output {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 4px 12px;
+    padding: 4px 6px;
     border: 1px solid var(--term-green);
     background: transparent;
     color: var(--term-green);
