@@ -13,6 +13,7 @@ export class PlayerController {
     private player: ChiptuneJsPlayer | null = null;
     private initialized = false;
     private pendingBuffer: ArrayBuffer | null = null;
+    private pendingAutoplay = false;
     private paused = true;
     private manuallyPaused = false;
     private stopped = true;
@@ -47,8 +48,18 @@ export class PlayerController {
             this.events.onReady();
             if (this.pendingBuffer) {
                 const buffered = this.pendingBuffer;
+                const shouldAutoplay = this.pendingAutoplay;
                 this.pendingBuffer = null;
-                this.play(buffered);
+                this.pendingAutoplay = false;
+                if (shouldAutoplay) {
+                    this.play(buffered);
+                } else {
+                    this.pendingBuffer = buffered;
+                    this.stopped = true;
+                    this.paused = true;
+                    this.manuallyPaused = false;
+                    document.body.classList.remove("playing");
+                }
             }
         });
         player.onMetadata((metadata) => this.events.onMetadata(metadata));
@@ -91,12 +102,20 @@ export class PlayerController {
 
     queue(buffer: ArrayBuffer): void {
         this.pendingBuffer = buffer;
+        this.pendingAutoplay = true;
+    }
+
+    load(buffer: ArrayBuffer): void {
+        this.pendingBuffer = buffer.slice(0);
+        this.pendingAutoplay = false;
+        this.stop();
     }
 
     play(buffer: ArrayBuffer): void {
         const player = this.ensure();
         if (!this.initialized) {
-            this.pendingBuffer = buffer;
+            this.pendingBuffer = buffer.slice(0);
+            this.pendingAutoplay = true;
             return;
         }
 
@@ -104,6 +123,7 @@ export class PlayerController {
         player.stop();
         player.play(buffer.slice(0));
         this.pendingBuffer = buffer;
+        this.pendingAutoplay = false;
         this.manuallyPaused = false;
         this.paused = false;
         this.stopped = false;

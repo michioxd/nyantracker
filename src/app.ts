@@ -18,6 +18,10 @@ import type { TrackerElements } from "./types/global";
 export class nyantracker {
     private static readonly SAMPLE_RATE = 48000;
     private static readonly READ_CHUNK_SIZE = 4096;
+    private static readonly SEARCH_QUERY_SYNC_DELAY_MS = 700;
+    private static readonly QUERY_KEY_SEARCH = "search";
+    private static readonly QUERY_KEY_TYPE = "type";
+    private static readonly QUERY_KEY_PLAYING = "playing";
     private static readonly STORAGE_KEY_TWEAKBAR_HIDDEN = "nyantracker:tweakbar-hidden";
     private static readonly STORAGE_KEY_VOLUME = "nyantracker:volume";
     private static readonly STORAGE_KEY_SEARCH = "nyantracker:modland-search";
@@ -70,6 +74,9 @@ export class nyantracker {
     private patternLayoutSyncScheduled = false;
     private preferredOscHeight: number | null = null;
     private preferredOscHidden = false;
+    private pendingSharedSong: string | null = null;
+    private pendingSharedSongAutoplay = false;
+    private browserQuerySyncTimeout: number | null = null;
 
     constructor(root: HTMLElement, elements: TrackerElements) {
         this.root = root;
@@ -90,11 +97,15 @@ export class nyantracker {
                 renderLimit: 300,
                 storageKeySearch: nyantracker.STORAGE_KEY_SEARCH,
                 onBeforeLoadModule: (entry) => {
+                    this.pushBrowserQueryState(entry.path);
                     this.prepareForIncomingLoad(entry.fileName, `${entry.artist} - ${entry.title}`);
                 },
+                onSearchChange: () => {
+                    this.scheduleBrowserQueryStateSync();
+                },
                 onStatusChange: (status) => this.updateStatus(status),
-                onLoadModule: async (_entry, buffer, fileName) => {
-                    await this.loadArrayBuffer(buffer, fileName);
+                onLoadModule: async (_entry, buffer, fileName, autoplay) => {
+                    await this.loadArrayBuffer(buffer, fileName, autoplay);
                 },
             },
         );
@@ -139,7 +150,6 @@ export class nyantracker {
 
     async init(): Promise<void> {
         this.restorePersistedState();
-        this.trackBrowser.restorePersistedState();
         this.bindEvents();
         this.updateSliderOutputs();
 
@@ -151,6 +161,7 @@ export class nyantracker {
             if (this.browserPane.isOpen()) {
                 void this.trackBrowser.initCatalog();
             }
+            await this.tryLoadSharedSongFromQuery();
         } catch (e) {
             console.error("Failed to load legacy OpenMPT module:", e);
             this.updateStatus("INITIALIZATION FAILED");
@@ -161,6 +172,7 @@ export class nyantracker {
         this.elements.sourceSelect.addEventListener("change", () => {
             const source = this.getSelectedBrowserSource();
             writeStorage(nyantracker.STORAGE_KEY_SOURCE, source);
+            this.pushBrowserQueryState("");
             void this.trackBrowser.setSource(source);
         });
 
@@ -170,6 +182,7 @@ export class nyantracker {
             if (!file) {
                 return;
             }
+            this.pendingSharedSongAutoplay = true;
             await this.loadFile(file);
         });
         this.trackBrowser.bindEvents();
@@ -285,6 +298,73 @@ export class nyantracker {
         this.elements.volumeOutput.value = `${Math.round(Number(this.elements.volumeSlider.value) * 100)}%`;
         this.elements.pitchOutput.value = `${Number(this.elements.pitchSlider.value).toFixed(2)}x`;
         this.elements.tempoOutput.value = `${Number(this.elements.tempoSlider.value).toFixed(2)}x`;
+    }
+
+    private getBrowserQueryState(): { search: string; type: BrowserSourceId; playing: string } {
+        const params = new URLSearchParams(window.location.search);
+        return {
+            search: params.get(nyantracker.QUERY_KEY_SEARCH)?.trim() ?? "",
+            type: this.parseBrowserSource(params.get(nyantracker.QUERY_KEY_TYPE)),
+            playing: params.get(nyantracker.QUERY_KEY_PLAYING)?.trim() ?? "",
+        };
+    }
+
+    private pushBrowserQueryState(playingOverride?: string): void {
+        this.clearScheduledBrowserQueryStateSync();
+
+        const params = new URLSearchParams(window.location.search);
+        const search = this.elements.searchInput.value.trim();
+        const type = this.getSelectedBrowserSource();
+        const activeEntry = this.trackBrowser.getActiveEntry();
+        const playing = playingOverride ?? activeEntry?.path ?? "";
+
+        if (search) {
+            params.set(nyantracker.QUERY_KEY_SEARCH, search);
+        } else {
+            params.delete(nyantracker.QUERY_KEY_SEARCH);
+        }
+
+        params.set(nyantracker.QUERY_KEY_TYPE, type);
+
+        if (playing) {
+            params.set(nyantracker.QUERY_KEY_PLAYING, playing);
+        } else {
+            params.delete(nyantracker.QUERY_KEY_PLAYING);
+        }
+
+        const query = params.toString();
+        const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+        window.history.replaceState(null, "", nextUrl);
+    }
+
+    private scheduleBrowserQueryStateSync(): void {
+        this.clearScheduledBrowserQueryStateSync();
+        this.browserQuerySyncTimeout = window.setTimeout(() => {
+            this.browserQuerySyncTimeout = null;
+            this.pushBrowserQueryState();
+        }, nyantracker.SEARCH_QUERY_SYNC_DELAY_MS);
+    }
+
+    private clearScheduledBrowserQueryStateSync(): void {
+        if (this.browserQuerySyncTimeout === null) {
+            return;
+        }
+
+        window.clearTimeout(this.browserQuerySyncTimeout);
+        this.browserQuerySyncTimeout = null;
+    }
+
+    private async tryLoadSharedSongFromQuery(): Promise<void> {
+        const sharedSong = this.pendingSharedSong;
+        if (!sharedSong) {
+            return;
+        }
+
+        this.pendingSharedSong = null;
+        const loaded = await this.trackBrowser.loadSongByPath(sharedSong, this.pendingSharedSongAutoplay);
+        if (!loaded) {
+            this.pendingSharedSong = sharedSong;
+        }
     }
 
     private getSelectedBrowserSource(): BrowserSourceId {
@@ -425,6 +505,7 @@ export class nyantracker {
         this.player.setVolume(Number(this.elements.volumeSlider.value));
         this.trackBrowser.setActiveSong(file.name);
         this.currentFileName = file.name;
+        this.pushBrowserQueryState(file.name);
         this.updateStatus("PARSING MODULE...");
 
         const buffer = await file.arrayBuffer();
@@ -1096,7 +1177,7 @@ export class nyantracker {
         this.updateProgressUi(0, 0);
     }
 
-    private async loadArrayBuffer(buffer: ArrayBuffer, fileName: string): Promise<void> {
+    private async loadArrayBuffer(buffer: ArrayBuffer, fileName: string, autoplay = true): Promise<void> {
         if (!this.legacyModule) {
             this.updateStatus("LEGACY ENGINE NOT READY");
             return;
@@ -1108,8 +1189,13 @@ export class nyantracker {
         this.updateStatus("PARSING MODULE...");
 
         this.rebuildLegacyModule(buffer);
-        this.player.play(buffer);
-        this.updateStatus("PLAYING");
+        if (autoplay) {
+            this.player.play(buffer);
+            this.updateStatus("PLAYING");
+        } else {
+            this.player.load(buffer);
+            this.updateStatus("READY - PRESS PLAY");
+        }
         this.lastFrameTime = performance.now();
         this.updateProgressUi(0, this.durationSeconds || this.player.instance?.duration || 0);
 
@@ -1120,9 +1206,18 @@ export class nyantracker {
     }
 
     private restorePersistedState(): void {
-        const savedSource = this.parseBrowserSource(readStorage(nyantracker.STORAGE_KEY_SOURCE));
+        const queryState = this.getBrowserQueryState();
+        const savedSource = this.parseBrowserSource(queryState.type || readStorage(nyantracker.STORAGE_KEY_SOURCE));
         this.elements.sourceSelect.value = savedSource;
         void this.trackBrowser.setSource(savedSource, false);
+
+        const initialSearch = queryState.search || readStorage(nyantracker.STORAGE_KEY_SEARCH) || "";
+        if (initialSearch) {
+            this.trackBrowser.setSearchQuery(initialSearch);
+        }
+
+        this.pendingSharedSong = queryState.playing || null;
+        this.pendingSharedSongAutoplay = false;
 
         const savedVolume = readStoredNumber(nyantracker.STORAGE_KEY_VOLUME);
         if (savedVolume !== null) {

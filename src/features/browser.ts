@@ -33,8 +33,9 @@ export interface TrackBrowserOptions {
     renderLimit: number;
     storageKeySearch: string;
     onBeforeLoadModule?: (entry: BrowserSongEntry) => void;
+    onSearchChange?: (query: string) => void;
     onStatusChange: (status: string) => void;
-    onLoadModule: (entry: BrowserSongEntry, buffer: ArrayBuffer, fileName: string) => Promise<void>;
+    onLoadModule: (entry: BrowserSongEntry, buffer: ArrayBuffer, fileName: string, autoplay: boolean) => Promise<void>;
 }
 
 export class TrackBrowser {
@@ -62,6 +63,24 @@ export class TrackBrowser {
         }
     }
 
+    setSearchQuery(query: string): void {
+        this.elements.searchInput.value = query;
+        writeStorage(this.options.storageKeySearch, query);
+        this.applyFilter();
+    }
+
+    getActiveEntry(): BrowserSongEntry | null {
+        if (!this.activePath) {
+            return null;
+        }
+
+        return (
+            this.getCurrentEntries().find(
+                (entry) => entry.path === this.activePath || entry.fileName === this.activePath,
+            ) ?? null
+        );
+    }
+
     async setSource(sourceId: BrowserSourceId, autoLoad = true): Promise<void> {
         this.sourceId = sourceId;
         this.page = 0;
@@ -83,7 +102,9 @@ export class TrackBrowser {
 
     bindEvents(): void {
         this.elements.searchInput.addEventListener("input", () => {
-            writeStorage(this.options.storageKeySearch, this.elements.searchInput.value);
+            const query = this.elements.searchInput.value;
+            writeStorage(this.options.storageKeySearch, query);
+            this.options.onSearchChange?.(query);
             this.applyFilter();
         });
 
@@ -151,6 +172,31 @@ export class TrackBrowser {
 
         this.catalogPromises.set(sourceId, catalogPromise);
         return catalogPromise;
+    }
+
+    async loadSongByPath(pathOrFileName: string, autoplay = true): Promise<boolean> {
+        const normalized = pathOrFileName.trim();
+        if (!normalized) {
+            return false;
+        }
+
+        await this.initCatalog();
+
+        const entry =
+            this.filteredEntries.find((candidate) => this.matchesEntry(candidate, normalized)) ??
+            this.getCurrentEntries().find((candidate) => this.matchesEntry(candidate, normalized));
+        if (!entry) {
+            return false;
+        }
+
+        const filteredIndex = this.filteredEntries.findIndex((candidate) => candidate.path === entry.path);
+        if (filteredIndex >= 0) {
+            this.page = Math.floor(filteredIndex / this.options.renderLimit);
+            this.renderSongList();
+        }
+
+        await this.loadEntry(entry, autoplay);
+        return true;
     }
 
     setActiveSong(pathOrFileName: string): void {
@@ -280,13 +326,13 @@ export class TrackBrowser {
         this.updatePagination(entriesToRender.length, this.filteredEntries.length);
     }
 
-    private async loadEntry(entry: BrowserSongEntry): Promise<void> {
+    private async loadEntry(entry: BrowserSongEntry, autoplay = true): Promise<void> {
         if (this.loading) {
             return;
         }
 
-        this.options.onBeforeLoadModule?.(entry);
         this.setActiveSong(entry.path);
+        this.options.onBeforeLoadModule?.(entry);
         this.elements.titleDisplay.textContent = `${entry.artist} - ${entry.title}`;
         this.options.onStatusChange("FETCHING MODULE... 0%");
         this.loadingSongItem = this.selectedSongItem;
@@ -298,7 +344,7 @@ export class TrackBrowser {
                 this.updateLoadingProgress(progressPercent);
                 this.options.onStatusChange(`FETCHING MODULE... ${Math.round(progressPercent)}%`);
             });
-            await this.options.onLoadModule(entry, module.buffer, module.fileName);
+            await this.options.onLoadModule(entry, module.buffer, module.fileName, autoplay);
         } catch (error) {
             console.error("Failed to load Modland module:", error);
             this.options.onStatusChange("MODULE LOAD FAILED");
@@ -341,9 +387,7 @@ export class TrackBrowser {
             return -1;
         }
 
-        return this.filteredEntries.findIndex(
-            (entry) => entry.path === this.activePath || entry.fileName === this.activePath,
-        );
+        return this.filteredEntries.findIndex((entry) => this.matchesEntry(entry, this.activePath));
     }
 
     private async loadRelativeSong(offset: -1 | 1): Promise<void> {
@@ -365,6 +409,10 @@ export class TrackBrowser {
         this.page = Math.floor(nextIndex / this.options.renderLimit);
         this.renderSongList();
         await this.loadEntry(nextEntry);
+    }
+
+    private matchesEntry(entry: BrowserSongEntry, pathOrFileName: string): boolean {
+        return entry.path === pathOrFileName || entry.fileName === pathOrFileName;
     }
 
     private getCurrentEntries(): BrowserSongEntry[] {
