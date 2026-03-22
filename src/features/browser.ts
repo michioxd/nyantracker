@@ -1,6 +1,6 @@
 import { cssEscape } from "../utils/css-escape";
-import { fetchKeygenCatalog, fetchKeygenModule, type KeygenEntry } from "../lib/keygen";
-import { fetchModlandCatalog, fetchModlandModule, type ModlandEntry } from "../lib/modland";
+import { fetchKeygenCatalog, fetchKeygenModule, type KeygenEntry } from "../sources/keygen";
+import { fetchModlandCatalog, fetchModlandModule, type ModlandEntry } from "../sources/modland";
 import { readStorage, writeStorage } from "../utils/storage";
 
 export type BrowserSourceId = "modland" | "keygen";
