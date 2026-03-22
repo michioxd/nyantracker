@@ -1,6 +1,7 @@
 import { loadLegacyOpenMpt } from "./lib/legacy-openmpt";
 import { BrowserPaneController } from "./features/browser-pane";
 import { TrackBrowser, type BrowserSourceId } from "./features/browser";
+import { getBrowserSources, getBrowserSource } from "./sources";
 import type { TrackerElements } from "./types/global";
 import { readStorage, readStoredNumber, writeStorage } from "./utils/storage";
 import { APP_CONSTANTS } from "./constants";
@@ -73,6 +74,7 @@ export class nyantracker {
     }
 
     async init(): Promise<void> {
+        this.renderSourceOptions();
         this.restorePersistedState();
         this.bindEvents();
         this.updateSliderOutputs();
@@ -284,7 +286,29 @@ export class nyantracker {
     }
 
     private parseBrowserSource(value: string | null): BrowserSourceId {
-        return value === "keygen" ? "keygen" : "modland";
+        const fallbackSourceId = getBrowserSources()[0]?.sourceId ?? "modland";
+        if (!value) {
+            return fallbackSourceId;
+        }
+
+        try {
+            return getBrowserSource(value as BrowserSourceId).sourceId;
+        } catch {
+            return fallbackSourceId;
+        }
+    }
+
+    private renderSourceOptions(): void {
+        const fragment = document.createDocumentFragment();
+
+        for (const source of getBrowserSources()) {
+            const option = document.createElement("option");
+            option.value = source.sourceId;
+            option.textContent = source.sourceName;
+            fragment.appendChild(option);
+        }
+
+        this.elements.sourceSelect.replaceChildren(fragment);
     }
 
     private updateStatus(status: string): void {

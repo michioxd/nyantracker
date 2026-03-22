@@ -1,4 +1,12 @@
 import type KeygenMusicIndex from "../types/keygen";
+import {
+    BrowserSource,
+    getSearchTerms,
+    readResponseWithProgress,
+    type BrowserFetchProgressCallback,
+    type BrowserLoadedModule,
+    type BrowserSongEntry,
+} from "./base";
 import { isPlayableExtension } from "./modland";
 
 const KEYGEN_INDEX_URL = "https://michioxd.ch/keygen-music/index.min.json";
@@ -16,23 +24,6 @@ export interface KeygenEntry {
     ext: string;
     playable: boolean;
     fileName: string;
-}
-
-export interface KeygenLoadedModule {
-    buffer: ArrayBuffer;
-    fileName: string;
-}
-
-export type KeygenFetchProgressCallback = (progressPercent: number) => void;
-
-let catalogPromise: Promise<KeygenEntry[]> | null = null;
-
-export async function fetchKeygenCatalog(): Promise<KeygenEntry[]> {
-    if (!catalogPromise) {
-        catalogPromise = loadCatalog();
-    }
-
-    return catalogPromise;
 }
 
 async function loadCatalog(): Promise<KeygenEntry[]> {
@@ -85,10 +76,10 @@ function parseEntry(item: KeygenMusicIndex): KeygenEntry | null {
     };
 }
 
-export async function fetchKeygenModule(
+async function fetchKeygenModule(
     entry: KeygenEntry,
-    onProgress?: KeygenFetchProgressCallback,
-): Promise<KeygenLoadedModule> {
+    onProgress?: BrowserFetchProgressCallback,
+): Promise<BrowserLoadedModule> {
     const response = await fetch(buildModuleUrl(entry.path));
     if (!response.ok) {
         throw new Error(`Failed to fetch module (${response.status})`);
@@ -101,57 +92,52 @@ export async function fetchKeygenModule(
     };
 }
 
-async function readResponseWithProgress(
-    response: Response,
-    onProgress?: KeygenFetchProgressCallback,
-): Promise<ArrayBuffer> {
-    const contentLengthHeader = response.headers.get("content-length");
-    const totalBytes = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : Number.NaN;
-    const canTrackProgress = Number.isFinite(totalBytes) && totalBytes > 0;
-
-    if (!response.body) {
-        const buffer = await response.arrayBuffer();
-        onProgress?.(100);
-        return buffer;
-    }
-
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let receivedBytes = 0;
-
-    if (canTrackProgress) {
-        onProgress?.(0);
-    }
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
-        }
-
-        if (!value) {
-            continue;
-        }
-
-        chunks.push(value);
-        receivedBytes += value.byteLength;
-
-        if (canTrackProgress) {
-            onProgress?.((receivedBytes / totalBytes) * 100);
-        }
-    }
-
-    const merged = new Uint8Array(receivedBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-        merged.set(chunk, offset);
-        offset += chunk.byteLength;
-    }
-
-    onProgress?.(100);
-    return merged.buffer;
-}
-
 function buildModuleUrl(path: string): string {
     return `${KEYGEN_MODULE_BASE_URL}/${encodeURI(path).replace(/#/g, "%23")}`;
 }
+
+function filterKeygenEntries(entries: BrowserSongEntry<KeygenEntry>[], query: string): BrowserSongEntry<KeygenEntry>[] {
+    const terms = getSearchTerms(query);
+    if (terms.length === 0) {
+        return entries;
+    }
+
+    return entries.filter((entry) => {
+        const haystack =
+            `${entry.title} ${entry.rawEntry.trackTitle} ${entry.artist} ${entry.tracker} ${entry.ext} ${entry.fileName}`.toLowerCase();
+        return terms.every((term) => haystack.includes(term));
+    });
+}
+
+export class KeygenSource extends BrowserSource<KeygenEntry> {
+    readonly sourceId = "keygen" as const;
+    readonly sourceName = "Keygen music";
+
+    filterEntries(entries: BrowserSongEntry<KeygenEntry>[], query: string): BrowserSongEntry<KeygenEntry>[] {
+        return filterKeygenEntries(entries, query);
+    }
+
+    async fetchModule(
+        entry: BrowserSongEntry<KeygenEntry>,
+        onProgress?: BrowserFetchProgressCallback,
+    ): Promise<BrowserLoadedModule> {
+        return fetchKeygenModule(entry.rawEntry, onProgress);
+    }
+
+    protected async loadEntries(): Promise<BrowserSongEntry<KeygenEntry>[]> {
+        const entries = await loadCatalog();
+        return entries.map((entry) => ({
+            source: this.sourceId,
+            path: entry.path,
+            fileName: entry.fileName,
+            tracker: entry.tracker,
+            artist: entry.artist || "Unknown",
+            title: entry.title || entry.fileName,
+            ext: entry.ext,
+            sizeKb: entry.sizeKb,
+            rawEntry: entry,
+        }));
+    }
+}
+
+export const keygenSource = new KeygenSource();

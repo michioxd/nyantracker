@@ -1,4 +1,12 @@
 import { unzipSync } from "fflate";
+import {
+    BrowserSource,
+    getSearchTerms,
+    readResponseWithProgress,
+    type BrowserFetchProgressCallback,
+    type BrowserLoadedModule,
+    type BrowserSongEntry,
+} from "./base";
 
 const PLAYABLE_EXTENSIONS = new Set(
     "mptm mod s3m xm it 669 amf ams c67 dbm digi dmf dsm dsym far ice j2b m15 mdl med mms mt2 mtm nst okt plm psm pt36 ptm sfx sfx2 st26 stk stm stx stp symmod ult wow gdm mo3 oxm umx xpk ppm mmcmp".split(
@@ -23,29 +31,12 @@ export interface ModlandEntry {
     archiveEntryName: string;
 }
 
-export interface ModlandLoadedModule {
-    buffer: ArrayBuffer;
-    fileName: string;
-}
-
-export type ModlandFetchProgressCallback = (progressPercent: number) => void;
-
-let catalogPromise: Promise<ModlandEntry[]> | null = null;
-
 export function getPlayableExtensionList(): string[] {
     return [...PLAYABLE_EXTENSIONS];
 }
 
 export function isPlayableExtension(extension: string): boolean {
     return PLAYABLE_EXTENSIONS.has(extension.toLowerCase());
-}
-
-export async function fetchModlandCatalog(): Promise<ModlandEntry[]> {
-    if (!catalogPromise) {
-        catalogPromise = loadCatalog();
-    }
-
-    return catalogPromise;
 }
 
 async function loadCatalog(): Promise<ModlandEntry[]> {
@@ -129,23 +120,25 @@ function parseEntry(path: string, sizeBytes: number): ModlandEntry {
     };
 }
 
-export function filterModlandEntries(entries: ModlandEntry[], query: string): ModlandEntry[] {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) {
+function filterModlandEntries(
+    entries: BrowserSongEntry<ModlandEntry>[],
+    query: string,
+): BrowserSongEntry<ModlandEntry>[] {
+    const terms = getSearchTerms(query);
+    if (terms.length === 0) {
         return entries;
     }
 
-    const terms = normalized.split(/\s+/).filter(Boolean);
     return entries.filter((entry) => {
         const haystack = `${entry.title} ${entry.artist} ${entry.tracker} ${entry.ext}`.toLowerCase();
         return terms.every((term) => haystack.includes(term));
     });
 }
 
-export async function fetchModlandModule(
+async function fetchModlandModule(
     entry: ModlandEntry,
-    onProgress?: ModlandFetchProgressCallback,
-): Promise<ModlandLoadedModule> {
+    onProgress?: BrowserFetchProgressCallback,
+): Promise<BrowserLoadedModule> {
     const requestUrl = buildModuleUrl(entry.path);
     const response = await fetch(requestUrl);
     if (!response.ok) {
@@ -163,7 +156,7 @@ export async function fetchModlandModule(
     return extractModuleFromArchive(new Uint8Array(archiveBuffer), entry);
 }
 
-function extractModuleFromArchive(archiveBytes: Uint8Array, entry: ModlandEntry): ModlandLoadedModule {
+function extractModuleFromArchive(archiveBytes: Uint8Array, entry: ModlandEntry): BrowserLoadedModule {
     const extracted = unzipSync(archiveBytes);
     const exactKey = Object.keys(extracted).find((key) =>
         key.toLowerCase().endsWith(entry.archiveEntryName.toLowerCase()),
@@ -192,57 +185,6 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
     return copy.buffer;
 }
 
-async function readResponseWithProgress(
-    response: Response,
-    onProgress?: ModlandFetchProgressCallback,
-): Promise<ArrayBuffer> {
-    const contentLengthHeader = response.headers.get("content-length");
-    const totalBytes = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : Number.NaN;
-    const canTrackProgress = Number.isFinite(totalBytes) && totalBytes > 0;
-
-    if (!response.body) {
-        const buffer = await response.arrayBuffer();
-        onProgress?.(100);
-        return buffer;
-    }
-
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let receivedBytes = 0;
-
-    if (canTrackProgress) {
-        onProgress?.(0);
-    }
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
-        }
-
-        if (!value) {
-            continue;
-        }
-
-        chunks.push(value);
-        receivedBytes += value.byteLength;
-
-        if (canTrackProgress) {
-            onProgress?.((receivedBytes / totalBytes) * 100);
-        }
-    }
-
-    const merged = new Uint8Array(receivedBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-        merged.set(chunk, offset);
-        offset += chunk.byteLength;
-    }
-
-    onProgress?.(100);
-    return merged.buffer;
-}
-
 function buildModuleUrl(path: string): string {
     return `${MODLAND_MODULE_BASE_URL}/${encodeURI(path).replace(/#/g, "%23")}`;
 }
@@ -250,3 +192,36 @@ function buildModuleUrl(path: string): string {
 function escapeRegExp(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+export class ModlandSource extends BrowserSource<ModlandEntry> {
+    readonly sourceId = "modland" as const;
+    readonly sourceName = "modland.com";
+
+    filterEntries(entries: BrowserSongEntry<ModlandEntry>[], query: string): BrowserSongEntry<ModlandEntry>[] {
+        return filterModlandEntries(entries, query);
+    }
+
+    async fetchModule(
+        entry: BrowserSongEntry<ModlandEntry>,
+        onProgress?: BrowserFetchProgressCallback,
+    ): Promise<BrowserLoadedModule> {
+        return fetchModlandModule(entry.rawEntry, onProgress);
+    }
+
+    protected async loadEntries(): Promise<BrowserSongEntry<ModlandEntry>[]> {
+        const entries = await loadCatalog();
+        return entries.map((entry) => ({
+            source: this.sourceId,
+            path: entry.path,
+            fileName: entry.archiveEntryName,
+            tracker: entry.tracker,
+            artist: entry.artist || "Unknown",
+            title: entry.title || entry.archiveEntryName,
+            ext: entry.ext,
+            sizeKb: entry.sizeKb,
+            rawEntry: entry,
+        }));
+    }
+}
+
+export const modlandSource = new ModlandSource();

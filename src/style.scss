@@ -136,6 +136,7 @@ body,
         display: flex;
         flex-direction: column;
         transition: opacity 0.2s;
+        scroll-behavior: smooth;
 
         &.disabled {
             pointer-events: none;
@@ -160,6 +161,7 @@ body,
             background: transparent;
             color: inherit;
             cursor: pointer;
+            transition: 0.2s;
 
             &.active {
                 background: var(--bg-active-row);
@@ -196,7 +198,7 @@ body,
                     left: 0;
                     background: var(--term-green);
                     opacity: 0.2;
-                    transition: width 0.2s;
+                    transition: width 0.1s;
                     z-index: 0;
                 }
             }
@@ -296,6 +298,7 @@ body,
 }
 
 @keyframes song-title-marquee {
+
     0%,
     15%,
     100% {
@@ -375,7 +378,7 @@ output {
     align-items: center;
     gap: 10px;
 
-    > span {
+    >span {
         min-width: 44px;
         color: var(--term-cyan);
         font-variant-numeric: tabular-nums;
@@ -473,7 +476,7 @@ output {
 input[type="file"] {
     display: none;
 
-    &:disabled + #fileLabel {
+    &:disabled+#fileLabel {
         border-color: #444;
         color: #444;
         cursor: not-allowed;
