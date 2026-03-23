@@ -3,6 +3,7 @@ export class OscilloscopeRenderer {
     private readonly smoothedVolumes = new Float32Array(64);
     private readonly smoothedFrequencies = new Float32Array(64);
     private readonly smoothedWaveVariants = new Uint8Array(64);
+    private readonly smoothedPcmMixes = new Float32Array(64);
     private readonly contexts = new WeakMap<HTMLCanvasElement, CanvasRenderingContext2D>();
     private readonly bufferLength = 1024;
     private readonly dataArray = new Uint8Array(1024);
@@ -12,6 +13,7 @@ export class OscilloscopeRenderer {
         volume: number,
         frequency: number,
         instrument: number,
+        isPcm: boolean,
         channelIndex: number,
         lineColor: string,
         backgroundColor: string,
@@ -62,6 +64,11 @@ export class OscilloscopeRenderer {
         const waveVariant = instrument > 0 ? nextWaveVariant : previousWaveVariant;
         this.smoothedWaveVariants[phaseIndex] = waveVariant;
 
+        const previousPcmMix = this.smoothedPcmMixes[phaseIndex];
+        const pcmMixTarget = isPcm ? 1 : 0;
+        const pcmMix = previousPcmMix + (pcmMixTarget - previousPcmMix) * 0.2;
+        this.smoothedPcmMixes[phaseIndex] = pcmMix;
+
         const previousVolume = this.smoothedVolumes[phaseIndex];
         const smoothedVolume = previousVolume + (volume - previousVolume) * 0.35;
         this.smoothedVolumes[phaseIndex] = smoothedVolume;
@@ -73,25 +80,42 @@ export class OscilloscopeRenderer {
 
         for (let i = 0; i < this.bufferLength; i++) {
             const t = i * visualFrequency + phase;
-            let wave = 0;
 
+            let modT = t % (Math.PI * 2);
+            if (modT < 0) {
+                modT += Math.PI * 2;
+            }
+
+            let chipWave = 0;
             switch (waveVariant) {
                 case 0:
-                    wave = Math.sin(t);
+                    chipWave = Math.sin(t);
                     break;
                 case 1:
-                    wave = (t % (Math.PI * 2)) / Math.PI - 1;
+                    chipWave = modT / Math.PI - 1;
                     break;
                 case 2:
-                    wave = Math.sin(t) > 0 ? 0.8 : -0.8;
+                    chipWave = Math.sin(t) > 0 ? 0.8 : -0.8;
                     break;
                 default:
-                    wave = Math.abs((t % (Math.PI * 2)) / Math.PI - 1) * 2 - 1;
+                    chipWave = Math.abs(modT / Math.PI - 1) * 2 - 1;
                     break;
             }
 
+            const pcmSeed = instrument * 0.173 + (phaseIndex + 1) * 0.619;
+            const pcmWave = Math.tanh(
+                Math.sin(t + pcmSeed) * 0.72 +
+                    Math.sin(t * (2.03 + (instrument % 5) * 0.11) + pcmSeed * 1.7) * 0.24 +
+                    Math.sin(t * (3.91 + (phaseIndex % 4) * 0.07) - pcmSeed * 0.9) * 0.15 +
+                    Math.sin(t * (6.2 + normalizedFrequency * 0.0015) + pcmSeed * 2.4) * 0.08,
+            );
+
+            let wave = chipWave * (1 - pcmMix) + pcmWave * pcmMix;
+
             let noise = 0;
-            if (normalizedFrequency < 150) {
+            if (pcmMix > 0.5) {
+                noise = Math.sin(t * 0.37 + phaseIndex * 1.618) * 0.08 + Math.sin(t * 1.91 + pcmSeed) * 0.04;
+            } else if (normalizedFrequency < 150) {
                 noise = Math.sin(t * 0.37 + phaseIndex * 1.618) * 0.18;
             }
             wave = wave * 0.6 + noise;
@@ -127,6 +151,7 @@ export class OscilloscopeRenderer {
             this.smoothedVolumes[index] = 0;
             this.smoothedFrequencies[index] = 0;
             this.smoothedWaveVariants[index] = 0;
+            this.smoothedPcmMixes[index] = 0;
         }
     }
 }

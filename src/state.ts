@@ -69,6 +69,8 @@ export interface TrackerCaches {
     patternRowCounts: Map<number, number>;
     channelFreqs: Float32Array;
     channelInstruments: Uint8Array;
+    channelIsPcm: Uint8Array;
+    instrumentPcmHints: Uint8Array;
     channelCanvases: Array<HTMLCanvasElement | null>;
     channelVuFills: Array<HTMLElement | null>;
 }
@@ -82,6 +84,8 @@ export function createTrackerCaches(maxChannels: number): TrackerCaches {
         patternRowCounts: new Map<number, number>(),
         channelFreqs: new Float32Array(maxChannels),
         channelInstruments: new Uint8Array(maxChannels),
+        channelIsPcm: new Uint8Array(maxChannels),
+        instrumentPcmHints: new Uint8Array(256),
         channelCanvases: new Array<HTMLCanvasElement | null>(maxChannels).fill(null),
         channelVuFills: new Array<HTMLElement | null>(maxChannels).fill(null),
     };

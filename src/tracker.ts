@@ -15,6 +15,13 @@ import { readStoredNumber, writeStorage } from "./utils/storage";
 import { APP_CONSTANTS } from "./constants";
 import { createTrackerCaches, createTrackerRuntimeState, type TrackerCaches, type TrackerRuntimeState } from "./state";
 
+const PCM_POSITIVE_PATTERN =
+    /\b(pcm|sample|vox|voice|vocal|choir|speech|drum|kick|snare|hat|hihat|ride|crash|clap|perc|tom|cym|break|loop|guitar|piano|organ|string|pad|stab|fx|sfx)\b/i;
+const CHIP_NEGATIVE_PATTERN =
+    /\b(square|pulse|pwm|saw|tri|triangle|noise|chip|chiptune|8bit|8-bit|16bit|16-bit|fm|opl|opn|psg|ay|ym|sid|nes|gameboy|gb|c64|beep|tone|lead)\b/i;
+const PCM_FRIENDLY_FORMAT_PATTERN = /\b(mod|xm|s3m|it|mtm|ult|669|stm|far|okt|ptm|amf|psm|med)\b/i;
+const CHIP_NATIVE_FORMAT_PATTERN = /\b(nsf|nsfe|gbs|hes|sgc|sap|sid|vgm|vgz|gym|ay|ym|opl|opn|fm)\b/i;
+
 interface TrackerPlaybackControllerOptions {
     elements: TrackerElements;
     onStatusChange: (status: string) => void;
@@ -238,6 +245,8 @@ export class TrackerPlaybackController {
         this.caches.patternRowCounts.clear();
         this.caches.channelFreqs.fill(0);
         this.caches.channelInstruments.fill(0);
+        this.caches.channelIsPcm.fill(0);
+        this.caches.instrumentPcmHints.fill(0);
         this.oscilloscopeRenderer.reset(this.maxChannels);
         this.state.numChannels = 0;
 
@@ -286,6 +295,7 @@ export class TrackerPlaybackController {
         this.state.currentRow = -1;
         this.caches.channelFreqs.fill(0);
         this.caches.channelInstruments.fill(0);
+        this.caches.channelIsPcm.fill(0);
 
         if (this.state.legacyModule && this.state.uiModulePtr) {
             this.syncLegacyModuleToSeconds(0);
@@ -395,6 +405,7 @@ export class TrackerPlaybackController {
         this.state.currentRow = -1;
         this.caches.channelFreqs.fill(0);
         this.caches.channelInstruments.fill(0);
+        this.caches.channelIsPcm.fill(0);
         this.patternView.initializeChannels(this.state.numChannels);
         this.cacheChannelElements();
 
@@ -410,6 +421,7 @@ export class TrackerPlaybackController {
 
     private handleMetadata(metadata: ChiptuneMetadata): void {
         this.state.durationSeconds = metadata.dur;
+        this.updateInstrumentPcmHints(metadata);
         this.elements.titleDisplay.textContent =
             typeof metadata.title === "string" && metadata.title ? metadata.title : this.state.currentFileName;
         this.elements.progressTotal.textContent = formatDuration(metadata.dur);
@@ -665,11 +677,14 @@ export class TrackerPlaybackController {
 
         for (let channelIndex = 0; channelIndex < row.length; channelIndex += 1) {
             const cell = row[channelIndex];
+            if (cell.inst !== "--") {
+                const instrumentIndex = this.parseInstrumentIndex(cell.inst);
+                this.caches.channelInstruments[channelIndex] = instrumentIndex;
+                this.caches.channelIsPcm[channelIndex] = this.getInstrumentPcmHint(instrumentIndex);
+            }
+
             if (cell.note && cell.note !== "---" && cell.note !== "===" && cell.note !== "^^^") {
                 this.caches.channelFreqs[channelIndex] = getNoteFrequency(cell.note);
-                if (cell.inst !== "--") {
-                    this.caches.channelInstruments[channelIndex] = this.parseInstrumentIndex(cell.inst);
-                }
             }
         }
     }
@@ -682,6 +697,55 @@ export class TrackerPlaybackController {
         const radix = /[a-f]/i.test(instrument) ? 16 : 10;
         const parsed = Number.parseInt(instrument, radix);
         return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    private updateInstrumentPcmHints(metadata: ChiptuneMetadata): void {
+        this.caches.instrumentPcmHints.fill(0);
+
+        const formatText = `${metadata.type ?? ""} ${metadata.originaltype ?? ""} ${metadata.tracker ?? ""}`;
+        const prefersPcm = PCM_FRIENDLY_FORMAT_PATTERN.test(formatText);
+        const forceChip = CHIP_NATIVE_FORMAT_PATTERN.test(formatText);
+        const samples = Array.isArray(metadata.song?.samples) ? metadata.song.samples : [];
+        const instruments = Array.isArray(metadata.song?.instruments) ? metadata.song.instruments : [];
+        const maxInstrumentCount = Math.min(
+            this.caches.instrumentPcmHints.length - 1,
+            Math.max(samples.length, instruments.length),
+        );
+
+        for (let instrumentIndex = 1; instrumentIndex <= maxInstrumentCount; instrumentIndex += 1) {
+            const sampleName = (samples[instrumentIndex - 1] ?? "").trim();
+            const instrumentName = (instruments[instrumentIndex - 1] ?? "").trim();
+            const combinedName = `${instrumentName} ${sampleName}`.trim();
+            const hasPositiveHint = PCM_POSITIVE_PATTERN.test(combinedName);
+            const hasNegativeHint = CHIP_NEGATIVE_PATTERN.test(combinedName);
+
+            let score = 0;
+            if (prefersPcm) {
+                score += 1;
+            }
+            if (samples.length > 0 && instrumentIndex <= samples.length) {
+                score += 1;
+            }
+            if (hasPositiveHint) {
+                score += 2;
+            }
+            if (hasNegativeHint) {
+                score -= 3;
+            }
+            if (forceChip) {
+                score -= 2;
+            }
+
+            this.caches.instrumentPcmHints[instrumentIndex] = score > 1 ? 1 : 0;
+        }
+    }
+
+    private getInstrumentPcmHint(instrumentIndex: number): number {
+        if (instrumentIndex <= 0 || instrumentIndex >= this.caches.instrumentPcmHints.length) {
+            return 0;
+        }
+
+        return this.caches.instrumentPcmHints[instrumentIndex] ?? 0;
     }
 
     private drawOscilloscopes(): void {
@@ -718,6 +782,7 @@ export class TrackerPlaybackController {
                 vu,
                 this.caches.channelFreqs[channel],
                 this.caches.channelInstruments[channel] || 0,
+                this.caches.channelIsPcm[channel] > 0,
                 channel,
                 this.oscilloscopeLineColor,
                 this.oscilloscopeBackgroundColor,
