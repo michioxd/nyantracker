@@ -1,5 +1,5 @@
-import legacyOpenMptMemoryUrl from "./chiptune2/libopenmpt.js.mem?url";
-import legacyOpenMptScriptUrl from "./chiptune2/libopenmpt.js?url";
+import legacyOpenMptScriptUrl from "./wasm/libopenmpt.js?url";
+import legacyOpenMptWasmUrl from "./wasm/libopenmpt.wasm?url";
 
 export interface LegacyOpenMptModule {
     locateFile?: (path: string, prefix: string) => string;
@@ -44,11 +44,18 @@ export interface LegacyOpenMptModule {
 
 interface LegacyOpenMptBootstrap {
     locateFile?: (path: string, prefix: string) => string;
+    onRuntimeInitialized?: () => void;
+    memory?: WebAssembly.Memory;
+    instantiateWasm?: (
+        imports: WebAssembly.Imports,
+        receiveInstance: (instance: WebAssembly.Instance, module?: WebAssembly.Module) => unknown,
+    ) => void;
 }
 
 declare global {
     interface Window {
         Module?: Partial<LegacyOpenMptModule> & LegacyOpenMptBootstrap;
+        libopenmpt?: Partial<LegacyOpenMptModule> & LegacyOpenMptBootstrap;
     }
 }
 
@@ -61,24 +68,130 @@ function getLegacyOpenMptAssetUrl(path: string): string {
         return legacyOpenMptScriptUrl;
     }
 
-    if (path === "libopenmpt.js.mem") {
-        return legacyOpenMptMemoryUrl;
+    if (path === "libopenmpt.wasm") {
+        return legacyOpenMptWasmUrl;
     }
 
     return new URL(path, new URL(legacyOpenMptScriptUrl, window.location.href)).href;
 }
 
-function hasLegacyModule(value: Window["Module"]): value is LegacyOpenMptModule {
-    return Boolean(value?._openmpt_module_create_from_memory2 && value?.ccall && value?.HEAPU8);
+function getLegacyMemory(value: Window["Module"]): WebAssembly.Memory | null {
+    return value?.memory instanceof WebAssembly.Memory ? value.memory : null;
 }
 
-function ensureBootstrapConfig(): void {
-    window.Module = {
-        ...(window.Module ?? {}),
+function findExportedMemory(exports: WebAssembly.Exports): WebAssembly.Memory | null {
+    for (const value of Object.values(exports)) {
+        if (value instanceof WebAssembly.Memory) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+function ensureHeapAccess(module: Partial<LegacyOpenMptModule> & LegacyOpenMptBootstrap): void {
+    const descriptor = Object.getOwnPropertyDescriptor(module, "HEAPU8");
+    if (descriptor?.get || module.HEAPU8) {
+        return;
+    }
+
+    Object.defineProperty(module, "HEAPU8", {
+        configurable: true,
+        enumerable: true,
+        get() {
+            const memory = getLegacyMemory(module);
+
+            if (!memory) {
+                throw new Error("Legacy OpenMPT memory is not ready.");
+            }
+
+            return new Uint8Array(memory.buffer);
+        },
+    });
+}
+
+function hasLegacyModule(value: Window["Module"]): value is LegacyOpenMptModule {
+    return Boolean(value?._openmpt_module_create_from_memory2 && getLegacyMemory(value));
+}
+
+function attachCcallPolyfill(module: Partial<LegacyOpenMptModule> & LegacyOpenMptBootstrap): void {
+    if (module.ccall) {
+        return;
+    }
+
+    module.ccall = (
+        name: string,
+        _returnType: "number" | "string" | "boolean" | null,
+        _argTypes: string[],
+        args: Array<number | string | boolean>,
+    ): number => {
+        const exportName = `_${name}` as keyof LegacyOpenMptModule;
+        const exportedFunction = module[exportName];
+
+        if (typeof exportedFunction !== "function") {
+            throw new Error(`Missing OpenMPT export: ${name}`);
+        }
+
+        return (exportedFunction as (...callArgs: Array<number | string | boolean>) => number)(...args);
+    };
+}
+
+async function instantiateLegacyOpenMptWasm(
+    bootstrap: Partial<LegacyOpenMptModule> & LegacyOpenMptBootstrap,
+    imports: WebAssembly.Imports,
+    receiveInstance: (instance: WebAssembly.Instance, module?: WebAssembly.Module) => unknown,
+): Promise<void> {
+    const response = await fetch(legacyOpenMptWasmUrl, { credentials: "same-origin" });
+
+    let result: WebAssembly.WebAssemblyInstantiatedSource;
+    if (typeof WebAssembly.instantiateStreaming === "function") {
+        try {
+            result = await WebAssembly.instantiateStreaming(response.clone(), imports);
+        } catch {
+            result = await WebAssembly.instantiate(await response.arrayBuffer(), imports);
+        }
+    } else {
+        result = await WebAssembly.instantiate(await response.arrayBuffer(), imports);
+    }
+
+    const exports = result.instance.exports as WebAssembly.Exports;
+    const memory = findExportedMemory(exports);
+    if (memory) {
+        bootstrap.memory = memory;
+        ensureHeapAccess(bootstrap);
+    }
+
+    receiveInstance(result.instance, result.module);
+}
+
+function getBootstrapTarget(): Partial<LegacyOpenMptModule> & LegacyOpenMptBootstrap {
+    return window.libopenmpt ?? window.Module ?? {};
+}
+
+function ensureBootstrapConfig(onRuntimeInitialized: () => void): void {
+    const previousOnRuntimeInitialized = getBootstrapTarget().onRuntimeInitialized;
+    const bootstrap = {
+        ...getBootstrapTarget(),
         locateFile(path: string, _prefix: string) {
             return getLegacyOpenMptAssetUrl(path);
         },
+        instantiateWasm(
+            imports: WebAssembly.Imports,
+            receiveInstance: (instance: WebAssembly.Instance, module?: WebAssembly.Module) => unknown,
+        ) {
+            void instantiateLegacyOpenMptWasm(bootstrap, imports, receiveInstance);
+        },
+        onRuntimeInitialized() {
+            ensureHeapAccess(bootstrap);
+            attachCcallPolyfill(bootstrap);
+            previousOnRuntimeInitialized?.();
+            onRuntimeInitialized();
+        },
     };
+
+    ensureHeapAccess(bootstrap);
+    window.libopenmpt = bootstrap;
+    window.Module = bootstrap;
 }
 
 function injectScript(): Promise<void> {
@@ -118,8 +231,11 @@ async function waitForLegacyModule(timeoutMs = 15000): Promise<LegacyOpenMptModu
     const startedAt = performance.now();
 
     while (performance.now() - startedAt < timeoutMs) {
-        if (hasLegacyModule(window.Module)) {
-            return window.Module;
+        const moduleCandidate = window.Module ?? window.libopenmpt;
+        if (hasLegacyModule(moduleCandidate)) {
+            ensureHeapAccess(moduleCandidate);
+            attachCcallPolyfill(moduleCandidate);
+            return moduleCandidate;
         }
         await new Promise((resolve) => window.setTimeout(resolve, 50));
     }
@@ -130,8 +246,11 @@ async function waitForLegacyModule(timeoutMs = 15000): Promise<LegacyOpenMptModu
 export function loadLegacyOpenMpt(): Promise<LegacyOpenMptModule> {
     if (!legacyOpenMptPromise) {
         legacyOpenMptPromise = (async () => {
-            ensureBootstrapConfig();
+            const runtimeReady = new Promise<void>((resolve) => {
+                ensureBootstrapConfig(resolve);
+            });
             await injectScript();
+            await runtimeReady;
             return waitForLegacyModule();
         })();
     }
