@@ -22,12 +22,19 @@ export const APP_CONSTANTS = {
 
 export const COLOR_SCHEMES = [
     { id: "default", label: "Default", oscColor: "#4ade80", oscBg: "#0c0c0c" },
+
     { id: "neon-blue", label: "Neon Blue", oscColor: "#56d6ff", oscBg: "#08101f" },
     { id: "amber-dusk", label: "Amber Dusk", oscColor: "#ffd27a", oscBg: "#120e08" },
     { id: "violet-pulse", label: "Violet Pulse", oscColor: "#9a8cff", oscBg: "#0b0612" },
     { id: "dracula", label: "Dracula", oscColor: "#bd93f9", oscBg: "#191a21" },
     { id: "monokai", label: "Monokai", oscColor: "#a6e22e", oscBg: "#1f201b" },
     { id: "solarized", label: "Solarized", oscColor: "#2aa198", oscBg: "#002b36" },
+    { id: "matrix-green", label: "Matrix Green", oscColor: "#00ff66", oscBg: "#020a03" },
+    { id: "gothic-purple", label: "Gothic Purple", oscColor: "#c084fc", oscBg: "#120814" },
+    { id: "pastel-pink", label: "Pastel Pink", oscColor: "#d870ad", oscBg: "#fff7fb" },
+    { id: "pastel-pink-dark", label: "Pastel Pink Dark", oscColor: "#ff9ecb", oscBg: "#1a0f17" },
+    { id: "black", label: "Black", oscColor: "#ffffff", oscBg: "#000000" },
+    { id: "white", label: "White", oscColor: "#000000", oscBg: "#ffffff" },
 ] as const;
 
 export type ColorSchemeId = (typeof COLOR_SCHEMES)[number]["id"];
