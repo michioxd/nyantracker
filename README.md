@@ -39,7 +39,7 @@ bun run build
 
 Contributions are welcome! If you have any ideas, suggestions, or bug reports, please open an issue or submit a pull request. Please make sure to follow the existing code style and include tests for any new features or bug fixes.
 
-AI (or *vibe code*) contributions is closed for now, but feel free to ask for help if you want to contribute.
+**AI-generated (or vibe-coded) contributions are not accepted at this time.**
 
 ## License
 
